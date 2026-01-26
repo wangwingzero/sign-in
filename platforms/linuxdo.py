@@ -348,25 +348,44 @@ class LinuxDoAdapter(BasePlatformAdapter):
     async def _click_topics(self) -> int:
         """点击并浏览主题帖，返回浏览数量"""
         try:
-            # 获取所有话题链接
-            topic_links = await self.page.query_selector_all("#list-area .title")
+            # 获取所有话题行
+            topic_rows = await self.page.query_selector_all("#list-area tr")
         except Exception:
-            topic_links = []
+            topic_rows = []
         
-        if not topic_links:
+        if not topic_rows:
             logger.error("未找到主题帖")
             return 0
         
-        # 获取所有 href
+        # 获取所有 href，过滤掉公告和运营反馈
         topic_urls = []
-        for link in topic_links:
-            href = await link.get_attribute("href")
-            if href:
-                if not href.startswith("http"):
-                    href = f"https://linux.do{href}"
-                topic_urls.append(href)
+        for row in topic_rows:
+            try:
+                # 检查分类
+                category_ele = await row.query_selector(".category-name")
+                if category_ele:
+                    category = await category_ele.inner_text()
+                    if category.strip() in self.BLOCKED_CATEGORIES:
+                        continue
+                
+                # 获取链接
+                title_link = await row.query_selector(".title")
+                if not title_link:
+                    continue
+                    
+                href = await title_link.get_attribute("href")
+                if href:
+                    if not href.startswith("http"):
+                        href = f"https://linux.do{href}"
+                    topic_urls.append(href)
+            except Exception:
+                continue
         
-        logger.info(f"发现 {len(topic_urls)} 个主题帖，随机选择浏览")
+        if not topic_urls:
+            logger.error("过滤后没有可浏览的帖子")
+            return 0
+        
+        logger.info(f"发现 {len(topic_urls)} 个可浏览帖子，随机选择浏览")
         
         # 随机选择 5-15 个帖子
         browse_count = random.randint(5, 15)
