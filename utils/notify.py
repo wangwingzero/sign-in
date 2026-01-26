@@ -17,8 +17,10 @@ import os
 import re
 import smtplib
 from datetime import datetime
+from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr
 from typing import Literal, Optional
 
 import httpx
@@ -177,16 +179,22 @@ class NotificationManager:
         # 发件人显示名称
         sender_name = self.email_sender if self.email_sender else "Github自动签到"
         
-        # 创建邮件
+        # 创建邮件 - 使用 MIMEMultipart 确保兼容性
+        msg = MIMEMultipart("alternative")
+        
+        # 添加纯文本备用内容（用于不支持HTML的客户端）
         if msg_type == "html":
-            msg = MIMEMultipart("alternative")
+            # 简单的纯文本版本
+            plain_text = "请使用支持HTML的邮件客户端查看此邮件。"
+            msg.attach(MIMEText(plain_text, "plain", "utf-8"))
             msg.attach(MIMEText(content, "html", "utf-8"))
         else:
-            msg = MIMEText(content, "plain", "utf-8")
+            msg.attach(MIMEText(content, "plain", "utf-8"))
         
-        msg["From"] = f"{sender_name} <{self.email_user}>"
+        # 使用 formataddr + Header 正确编码中文发件人名称 (RFC5322 兼容)
+        msg["From"] = formataddr((Header(sender_name, "utf-8").encode(), self.email_user))
         msg["To"] = self.email_to
-        msg["Subject"] = title
+        msg["Subject"] = Header(title, "utf-8")
         
         # 确定 SMTP 服务器
         smtp_server = self.smtp_server
@@ -197,7 +205,7 @@ class NotificationManager:
         # 发送邮件
         with smtplib.SMTP_SSL(smtp_server, 465) as server:
             server.login(self.email_user, self.email_pass)
-            server.send_message(msg)
+            server.sendmail(self.email_user, [self.email_to], msg.as_string())
     
     def _send_gotify(
         self,
