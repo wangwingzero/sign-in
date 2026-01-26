@@ -24,13 +24,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      # 随机延迟 0-11 小时，使执行时间分布在 00:00-11:00 和 12:00-23:00
-      - name: Random delay
-        run: |
-          DELAY=$((RANDOM % 39600))
-          echo "Waiting for $((DELAY / 60)) minutes..."
-          sleep $DELAY
-      
       # 安装 Chrome (用于 DrissionPage)
       - uses: browser-actions/setup-chrome@v1
       - name: Check Chrome version
