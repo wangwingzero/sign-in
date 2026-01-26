@@ -175,7 +175,7 @@ class NotificationManager:
             raise ValueError("Email 配置不完整")
         
         # 发件人显示名称
-        sender_name = self.email_sender if self.email_sender else "Sign-in Bot"
+        sender_name = self.email_sender if self.email_sender else "Github自动签到"
         
         # 创建邮件
         if msg_type == "html":
