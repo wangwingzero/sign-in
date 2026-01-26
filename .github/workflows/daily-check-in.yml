@@ -112,3 +112,12 @@ jobs:
             uv run python main.py
           fi
 
+
+      # 清理旧的工作流运行记录
+      - name: Delete workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          retain_days: 10
+          keep_minimum_runs: 6
