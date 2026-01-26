@@ -1,0 +1,702 @@
+##***group***Run uv run python main.py --platform anyrouter
+***36;1muv run python main.py --platform anyrouter***0m
+shell: /usr/bin/bash -e ***0***
+env:
+  UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+  ANYROUTER_ACCOUNTS: ***
+  PROVIDERS: 
+  GOTIFY_URL: 
+  GOTIFY_TOKEN: 
+  SC3_PUSH_KEY: 
+  WXPUSH_URL: 
+  WXPUSH_TOKEN: 
+  TELEGRAM_BOT_TOKEN: 
+  TELEGRAM_CHAT_ID: 
+  TELEGRAM_TOKEN: 
+  TELEGRAM_USERID: 
+  PUSHPLUS_TOKEN: 
+  SERVERPUSHKEY: 
+  DINGDING_WEBHOOK: 
+  FEISHU_WEBHOOK: 
+  WEIXIN_WEBHOOK: 
+  BARK_KEY: 
+  BARK_SERVER: 
+##***endgroup***
+warning: The `tool.uv.dev-dependencies` field (used in `pyproject.toml`) is deprecated and will be removed in a future release; use `dependency-groups.dev` instead
+***32m2026-01-26 12:58:12***0m | ***1mINFO    ***0m | ***36mutils.config***0m:***36m_load_anyrouter_accounts***0m:***36m245***0m - ***1m成功加载 8 个 AnyRouter 账号配置***0m
+***32m2026-01-26 12:58:12***0m | ***1mINFO    ***0m | ***36m__main__***0m:***36mrun_checkin***0m:***36m152***0m - ***1m开始签到 - 2026-01-26 12:58:12***0m
+***32m2026-01-26 12:58:12***0m | ***1mINFO    ***0m | ***36m__main__***0m:***36mrun_checkin***0m:***36m155***0m - ***1m仅运行平台: anyrouter***0m
+***32m2026-01-26 12:58:12***0m | ***1mINFO    ***0m | ***36mplatforms.base***0m:***36mrun***0m:***36m126***0m - ***1m***AnyRouter (anyrouter)*** 开始签到: anyrouter1***0m
+***32m2026-01-26 12:58:12***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m168***0m - ***1m***anyrouter1*** 启动浏览器获取 WAF cookies...***0m
+***32m2026-01-26 12:58:15***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m194***0m - ***1m***anyrouter1*** 访问登录页面获取初始 cookies...***0m
+***32m2026-01-26 12:58:18***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m215***0m - ***1m***anyrouter1*** 获取到 3 个 WAF cookies***0m
+***32m2026-01-26 12:58:18***0m | ***32m***1mSUCCESS ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m224***0m - ***32m***1m***anyrouter1*** 成功获取所有 WAF cookies***0m
+***32m2026-01-26 12:58:18***0m | ***31m***1mERROR   ***0m | ***36mplatforms.base***0m:***36mrun***0m:***36m151***0m - ***31m***1m***AnyRouter (anyrouter)*** 签到异常: anyrouter1***0m
+***33m***1mTraceback (most recent call last):***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m189***0m, in ***35m<module>***0m
+    ***1mmain***0m***1m(***0m***1m)***0m
+    ***36m└ ***0m***36m***1m<function main at 0x7f0a286ff2e0>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m178***0m, in ***35mmain***0m
+    ***1mexit_code***0m ***35m***1m=***0m ***1masyncio***0m***35m***1m.***0m***1mrun***0m***1m(***0m***1mrun_checkin***0m***1m(***0m***1margs***0m***1m)***0m***1m)***0m
+    ***36m            │       │   │           └ ***0m***36m***1mNamespace(platform='anyrouter', dry_run=False, debug=False, no_notify=False, force_notify=False)***0m
+    ***36m            │       │   └ ***0m***36m***1m<function run_checkin at 0x7f0a286ff240>***0m
+    ***36m            │       └ ***0m***36m***1m<function run at 0x7f0a2a84e700>***0m
+    ***36m            └ ***0m***36m***1m<module 'asyncio' from '/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/__init__....***0m
+
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           │      │   └ <coroutine object run_checkin at 0x7f0a2a66fef0>
+           │      └ <function Runner.run at 0x7f0a2a7423e0>
+           └ <asyncio.runners.Runner object at 0x7f0a2a0043e0>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           │    │     │                  └ <Task pending name='Task-1' coro=<run_checkin() running at /home/runner/work/sign-in/sign-in/main.py:156> cb=***_run_until_comp...
+           │    │     └ <function BaseEventLoop.run_until_complete at 0x7f0a2a6f3f60>
+           │    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+           └ <asyncio.runners.Runner object at 0x7f0a2a0043e0>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 678, in run_until_complete
+    self.run_forever()
+    │    └ <function BaseEventLoop.run_forever at 0x7f0a2a6f3ec0>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 645, in run_forever
+    self._run_once()
+    │    └ <function BaseEventLoop._run_once at 0x7f0a2a741d00>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 1999, in _run_once
+    handle._run()
+    │      └ <function Handle._run at 0x7f0a2a82ba60>
+    └ <Handle Task.task_wakeup(<Future finished result=None>)>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+    │    │            │    │           │    └ <member '_args' of 'Handle' objects>
+    │    │            │    │           └ <Handle Task.task_wakeup(<Future finished result=None>)>
+    │    │            │    └ <member '_callback' of 'Handle' objects>
+    │    │            └ <Handle Task.task_wakeup(<Future finished result=None>)>
+    │    └ <member '_context' of 'Handle' objects>
+    └ <Handle Task.task_wakeup(<Future finished result=None>)>
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m156***0m, in ***35mrun_checkin***0m
+    ***35m***1mawait***0m ***1mmanager***0m***35m***1m.***0m***1mrun_platform***0m***1m(***0m***1margs***0m***35m***1m.***0m***1mplatform***0m***1m)***0m
+    ***36m      │       │            │    └ ***0m***36m***1m'anyrouter'***0m
+    ***36m      │       │            └ ***0m***36m***1mNamespace(platform='anyrouter', dry_run=False, debug=False, no_notify=False, force_notify=False)***0m
+    ***36m      │       └ ***0m***36m***1m<function PlatformManager.run_platform at 0x7f0a2845c360>***0m
+    ***36m      └ ***0m***36m***1m<platforms.manager.PlatformManager object at 0x7f0a28d56000>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mmanager.py***0m", line ***33m79***0m, in ***35mrun_platform***0m
+    ***1manyrouter_results***0m ***35m***1m=***0m ***35m***1mawait***0m ***1mself***0m***35m***1m.***0m***1m_run_all_anyrouter***0m***1m(***0m***1m)***0m
+    ***36m                          │    └ ***0m***36m***1m<function PlatformManager._run_all_anyrouter at 0x7f0a2845c540>***0m
+    ***36m                          └ ***0m***36m***1m<platforms.manager.PlatformManager object at 0x7f0a28d56000>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mmanager.py***0m", line ***33m141***0m, in ***35m_run_all_anyrouter***0m
+    ***1mresult***0m ***35m***1m=***0m ***35m***1mawait***0m ***1madapter***0m***35m***1m.***0m***1mrun***0m***1m(***0m***1m)***0m
+    ***36m               │       └ ***0m***36m***1m<function BasePlatformAdapter.run at 0x7f0a2a50ccc0>***0m
+    ***36m               └ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter1)***0m
+
+> File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mbase.py***0m", line ***33m129***0m, in ***35mrun***0m
+    ***35m***1mif***0m ***35m***1mnot***0m ***35m***1mawait***0m ***1mself***0m***35m***1m.***0m***1mlogin***0m***1m(***0m***1m)***0m***1m:***0m
+    ***36m             │    └ ***0m***36m***1m<function AnyRouterAdapter.login at 0x7f0a28457c40>***0m
+    ***36m             └ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter1)***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1manyrouter.py***0m", line ***33m83***0m, in ***35mlogin***0m
+    ***1mself***0m***35m***1m.***0m***1mclient***0m ***35m***1m=***0m ***1mhttpx***0m***35m***1m.***0m***1mClient***0m***1m(***0m***1mhttp2***0m***35m***1m=***0m***36m***1mTrue***0m***1m,***0m ***1mtimeout***0m***35m***1m=***0m***34m***1m30.0***0m***1m)***0m
+    ***36m│    │        │     └ ***0m***36m***1m<class 'httpx.Client'>***0m
+    ***36m│    │        └ ***0m***36m***1m<module 'httpx' from '/home/runner/work/sign-in/sign-in/.venv/lib/python3.12/site-packages/httpx/__init__.py'>***0m
+    ***36m│    └ ***0m***36m***1mNone***0m
+    ***36m└ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter1)***0m
+
+  File "/home/runner/work/sign-in/sign-in/.venv/lib/python3.12/site-packages/httpx/_client.py", line 680, in __init__
+    raise ImportError(
+
+***31m***1mImportError***0m:***1m Using http2=True, but the 'h2' package is not installed. Make sure to install httpx using `pip install httpx***http2***`.***0m
+***32m2026-01-26 12:58:18***0m | ***1mINFO    ***0m | ***36mplatforms.base***0m:***36mrun***0m:***36m126***0m - ***1m***AnyRouter (anyrouter)*** 开始签到: anyrouter3***0m
+***32m2026-01-26 12:58:18***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m168***0m - ***1m***anyrouter3*** 启动浏览器获取 WAF cookies...***0m
+***32m2026-01-26 12:58:18***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m194***0m - ***1m***anyrouter3*** 访问登录页面获取初始 cookies...***0m
+***32m2026-01-26 12:58:21***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m215***0m - ***1m***anyrouter3*** 获取到 3 个 WAF cookies***0m
+***32m2026-01-26 12:58:21***0m | ***32m***1mSUCCESS ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m224***0m - ***32m***1m***anyrouter3*** 成功获取所有 WAF cookies***0m
+***32m2026-01-26 12:58:21***0m | ***31m***1mERROR   ***0m | ***36mplatforms.base***0m:***36mrun***0m:***36m151***0m - ***31m***1m***AnyRouter (anyrouter)*** 签到异常: anyrouter3***0m
+***33m***1mTraceback (most recent call last):***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m189***0m, in ***35m<module>***0m
+    ***1mmain***0m***1m(***0m***1m)***0m
+    ***36m└ ***0m***36m***1m<function main at 0x7f0a286ff2e0>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m178***0m, in ***35mmain***0m
+    ***1mexit_code***0m ***35m***1m=***0m ***1masyncio***0m***35m***1m.***0m***1mrun***0m***1m(***0m***1mrun_checkin***0m***1m(***0m***1margs***0m***1m)***0m***1m)***0m
+    ***36m            │       │   │           └ ***0m***36m***1mNamespace(platform='anyrouter', dry_run=False, debug=False, no_notify=False, force_notify=False)***0m
+    ***36m            │       │   └ ***0m***36m***1m<function run_checkin at 0x7f0a286ff240>***0m
+    ***36m            │       └ ***0m***36m***1m<function run at 0x7f0a2a84e700>***0m
+    ***36m            └ ***0m***36m***1m<module 'asyncio' from '/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/__init__....***0m
+
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           │      │   └ <coroutine object run_checkin at 0x7f0a2a66fef0>
+           │      └ <function Runner.run at 0x7f0a2a7423e0>
+           └ <asyncio.runners.Runner object at 0x7f0a2a0043e0>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           │    │     │                  └ <Task pending name='Task-1' coro=<run_checkin() running at /home/runner/work/sign-in/sign-in/main.py:156> cb=***_run_until_comp...
+           │    │     └ <function BaseEventLoop.run_until_complete at 0x7f0a2a6f3f60>
+           │    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+           └ <asyncio.runners.Runner object at 0x7f0a2a0043e0>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 678, in run_until_complete
+    self.run_forever()
+    │    └ <function BaseEventLoop.run_forever at 0x7f0a2a6f3ec0>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 645, in run_forever
+    self._run_once()
+    │    └ <function BaseEventLoop._run_once at 0x7f0a2a741d00>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 1999, in _run_once
+    handle._run()
+    │      └ <function Handle._run at 0x7f0a2a82ba60>
+    └ <Handle Task.task_wakeup(<Future finished result=None>)>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+    │    │            │    │           │    └ <member '_args' of 'Handle' objects>
+    │    │            │    │           └ <Handle Task.task_wakeup(<Future finished result=None>)>
+    │    │            │    └ <member '_callback' of 'Handle' objects>
+    │    │            └ <Handle Task.task_wakeup(<Future finished result=None>)>
+    │    └ <member '_context' of 'Handle' objects>
+    └ <Handle Task.task_wakeup(<Future finished result=None>)>
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m156***0m, in ***35mrun_checkin***0m
+    ***35m***1mawait***0m ***1mmanager***0m***35m***1m.***0m***1mrun_platform***0m***1m(***0m***1margs***0m***35m***1m.***0m***1mplatform***0m***1m)***0m
+    ***36m      │       │            │    └ ***0m***36m***1m'anyrouter'***0m
+    ***36m      │       │            └ ***0m***36m***1mNamespace(platform='anyrouter', dry_run=False, debug=False, no_notify=False, force_notify=False)***0m
+    ***36m      │       └ ***0m***36m***1m<function PlatformManager.run_platform at 0x7f0a2845c360>***0m
+    ***36m      └ ***0m***36m***1m<platforms.manager.PlatformManager object at 0x7f0a28d56000>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mmanager.py***0m", line ***33m79***0m, in ***35mrun_platform***0m
+    ***1manyrouter_results***0m ***35m***1m=***0m ***35m***1mawait***0m ***1mself***0m***35m***1m.***0m***1m_run_all_anyrouter***0m***1m(***0m***1m)***0m
+    ***36m                          │    └ ***0m***36m***1m<function PlatformManager._run_all_anyrouter at 0x7f0a2845c540>***0m
+    ***36m                          └ ***0m***36m***1m<platforms.manager.PlatformManager object at 0x7f0a28d56000>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mmanager.py***0m", line ***33m141***0m, in ***35m_run_all_anyrouter***0m
+    ***1mresult***0m ***35m***1m=***0m ***35m***1mawait***0m ***1madapter***0m***35m***1m.***0m***1mrun***0m***1m(***0m***1m)***0m
+    ***36m               │       └ ***0m***36m***1m<function BasePlatformAdapter.run at 0x7f0a2a50ccc0>***0m
+    ***36m               └ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter3)***0m
+
+> File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mbase.py***0m", line ***33m129***0m, in ***35mrun***0m
+    ***35m***1mif***0m ***35m***1mnot***0m ***35m***1mawait***0m ***1mself***0m***35m***1m.***0m***1mlogin***0m***1m(***0m***1m)***0m***1m:***0m
+    ***36m             │    └ ***0m***36m***1m<function AnyRouterAdapter.login at 0x7f0a28457c40>***0m
+    ***36m             └ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter3)***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1manyrouter.py***0m", line ***33m83***0m, in ***35mlogin***0m
+    ***1mself***0m***35m***1m.***0m***1mclient***0m ***35m***1m=***0m ***1mhttpx***0m***35m***1m.***0m***1mClient***0m***1m(***0m***1mhttp2***0m***35m***1m=***0m***36m***1mTrue***0m***1m,***0m ***1mtimeout***0m***35m***1m=***0m***34m***1m30.0***0m***1m)***0m
+    ***36m│    │        │     └ ***0m***36m***1m<class 'httpx.Client'>***0m
+    ***36m│    │        └ ***0m***36m***1m<module 'httpx' from '/home/runner/work/sign-in/sign-in/.venv/lib/python3.12/site-packages/httpx/__init__.py'>***0m
+    ***36m│    └ ***0m***36m***1mNone***0m
+    ***36m└ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter3)***0m
+
+  File "/home/runner/work/sign-in/sign-in/.venv/lib/python3.12/site-packages/httpx/_client.py", line 680, in __init__
+    raise ImportError(
+
+***31m***1mImportError***0m:***1m Using http2=True, but the 'h2' package is not installed. Make sure to install httpx using `pip install httpx***http2***`.***0m
+***32m2026-01-26 12:58:21***0m | ***1mINFO    ***0m | ***36mplatforms.base***0m:***36mrun***0m:***36m126***0m - ***1m***AnyRouter (anyrouter)*** 开始签到: anyrouter4***0m
+***32m2026-01-26 12:58:21***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m168***0m - ***1m***anyrouter4*** 启动浏览器获取 WAF cookies...***0m
+***32m2026-01-26 12:58:22***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m194***0m - ***1m***anyrouter4*** 访问登录页面获取初始 cookies...***0m
+***32m2026-01-26 12:58:24***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m215***0m - ***1m***anyrouter4*** 获取到 3 个 WAF cookies***0m
+***32m2026-01-26 12:58:24***0m | ***32m***1mSUCCESS ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m224***0m - ***32m***1m***anyrouter4*** 成功获取所有 WAF cookies***0m
+***32m2026-01-26 12:58:24***0m | ***31m***1mERROR   ***0m | ***36mplatforms.base***0m:***36mrun***0m:***36m151***0m - ***31m***1m***AnyRouter (anyrouter)*** 签到异常: anyrouter4***0m
+***33m***1mTraceback (most recent call last):***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m189***0m, in ***35m<module>***0m
+    ***1mmain***0m***1m(***0m***1m)***0m
+    ***36m└ ***0m***36m***1m<function main at 0x7f0a286ff2e0>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m178***0m, in ***35mmain***0m
+    ***1mexit_code***0m ***35m***1m=***0m ***1masyncio***0m***35m***1m.***0m***1mrun***0m***1m(***0m***1mrun_checkin***0m***1m(***0m***1margs***0m***1m)***0m***1m)***0m
+    ***36m            │       │   │           └ ***0m***36m***1mNamespace(platform='anyrouter', dry_run=False, debug=False, no_notify=False, force_notify=False)***0m
+    ***36m            │       │   └ ***0m***36m***1m<function run_checkin at 0x7f0a286ff240>***0m
+    ***36m            │       └ ***0m***36m***1m<function run at 0x7f0a2a84e700>***0m
+    ***36m            └ ***0m***36m***1m<module 'asyncio' from '/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/__init__....***0m
+
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           │      │   └ <coroutine object run_checkin at 0x7f0a2a66fef0>
+           │      └ <function Runner.run at 0x7f0a2a7423e0>
+           └ <asyncio.runners.Runner object at 0x7f0a2a0043e0>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           │    │     │                  └ <Task pending name='Task-1' coro=<run_checkin() running at /home/runner/work/sign-in/sign-in/main.py:156> cb=***_run_until_comp...
+           │    │     └ <function BaseEventLoop.run_until_complete at 0x7f0a2a6f3f60>
+           │    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+           └ <asyncio.runners.Runner object at 0x7f0a2a0043e0>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 678, in run_until_complete
+    self.run_forever()
+    │    └ <function BaseEventLoop.run_forever at 0x7f0a2a6f3ec0>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 645, in run_forever
+    self._run_once()
+    │    └ <function BaseEventLoop._run_once at 0x7f0a2a741d00>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 1999, in _run_once
+    handle._run()
+    │      └ <function Handle._run at 0x7f0a2a82ba60>
+    └ <Handle Task.task_wakeup(<Future finished result=None>)>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+    │    │            │    │           │    └ <member '_args' of 'Handle' objects>
+    │    │            │    │           └ <Handle Task.task_wakeup(<Future finished result=None>)>
+    │    │            │    └ <member '_callback' of 'Handle' objects>
+    │    │            └ <Handle Task.task_wakeup(<Future finished result=None>)>
+    │    └ <member '_context' of 'Handle' objects>
+    └ <Handle Task.task_wakeup(<Future finished result=None>)>
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m156***0m, in ***35mrun_checkin***0m
+    ***35m***1mawait***0m ***1mmanager***0m***35m***1m.***0m***1mrun_platform***0m***1m(***0m***1margs***0m***35m***1m.***0m***1mplatform***0m***1m)***0m
+    ***36m      │       │            │    └ ***0m***36m***1m'anyrouter'***0m
+    ***36m      │       │            └ ***0m***36m***1mNamespace(platform='anyrouter', dry_run=False, debug=False, no_notify=False, force_notify=False)***0m
+    ***36m      │       └ ***0m***36m***1m<function PlatformManager.run_platform at 0x7f0a2845c360>***0m
+    ***36m      └ ***0m***36m***1m<platforms.manager.PlatformManager object at 0x7f0a28d56000>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mmanager.py***0m", line ***33m79***0m, in ***35mrun_platform***0m
+    ***1manyrouter_results***0m ***35m***1m=***0m ***35m***1mawait***0m ***1mself***0m***35m***1m.***0m***1m_run_all_anyrouter***0m***1m(***0m***1m)***0m
+    ***36m                          │    └ ***0m***36m***1m<function PlatformManager._run_all_anyrouter at 0x7f0a2845c540>***0m
+    ***36m                          └ ***0m***36m***1m<platforms.manager.PlatformManager object at 0x7f0a28d56000>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mmanager.py***0m", line ***33m141***0m, in ***35m_run_all_anyrouter***0m
+    ***1mresult***0m ***35m***1m=***0m ***35m***1mawait***0m ***1madapter***0m***35m***1m.***0m***1mrun***0m***1m(***0m***1m)***0m
+    ***36m               │       └ ***0m***36m***1m<function BasePlatformAdapter.run at 0x7f0a2a50ccc0>***0m
+    ***36m               └ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter4)***0m
+
+> File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mbase.py***0m", line ***33m129***0m, in ***35mrun***0m
+    ***35m***1mif***0m ***35m***1mnot***0m ***35m***1mawait***0m ***1mself***0m***35m***1m.***0m***1mlogin***0m***1m(***0m***1m)***0m***1m:***0m
+    ***36m             │    └ ***0m***36m***1m<function AnyRouterAdapter.login at 0x7f0a28457c40>***0m
+    ***36m             └ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter4)***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1manyrouter.py***0m", line ***33m83***0m, in ***35mlogin***0m
+    ***1mself***0m***35m***1m.***0m***1mclient***0m ***35m***1m=***0m ***1mhttpx***0m***35m***1m.***0m***1mClient***0m***1m(***0m***1mhttp2***0m***35m***1m=***0m***36m***1mTrue***0m***1m,***0m ***1mtimeout***0m***35m***1m=***0m***34m***1m30.0***0m***1m)***0m
+    ***36m│    │        │     └ ***0m***36m***1m<class 'httpx.Client'>***0m
+    ***36m│    │        └ ***0m***36m***1m<module 'httpx' from '/home/runner/work/sign-in/sign-in/.venv/lib/python3.12/site-packages/httpx/__init__.py'>***0m
+    ***36m│    └ ***0m***36m***1mNone***0m
+    ***36m└ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter4)***0m
+
+  File "/home/runner/work/sign-in/sign-in/.venv/lib/python3.12/site-packages/httpx/_client.py", line 680, in __init__
+    raise ImportError(
+
+***31m***1mImportError***0m:***1m Using http2=True, but the 'h2' package is not installed. Make sure to install httpx using `pip install httpx***http2***`.***0m
+***32m2026-01-26 12:58:24***0m | ***1mINFO    ***0m | ***36mplatforms.base***0m:***36mrun***0m:***36m126***0m - ***1m***AnyRouter (anyrouter)*** 开始签到: anyrouter5***0m
+***32m2026-01-26 12:58:24***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m168***0m - ***1m***anyrouter5*** 启动浏览器获取 WAF cookies...***0m
+***32m2026-01-26 12:58:25***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m194***0m - ***1m***anyrouter5*** 访问登录页面获取初始 cookies...***0m
+***32m2026-01-26 12:58:30***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m215***0m - ***1m***anyrouter5*** 获取到 3 个 WAF cookies***0m
+***32m2026-01-26 12:58:30***0m | ***32m***1mSUCCESS ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m224***0m - ***32m***1m***anyrouter5*** 成功获取所有 WAF cookies***0m
+***32m2026-01-26 12:58:30***0m | ***31m***1mERROR   ***0m | ***36mplatforms.base***0m:***36mrun***0m:***36m151***0m - ***31m***1m***AnyRouter (anyrouter)*** 签到异常: anyrouter5***0m
+***33m***1mTraceback (most recent call last):***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m189***0m, in ***35m<module>***0m
+    ***1mmain***0m***1m(***0m***1m)***0m
+    ***36m└ ***0m***36m***1m<function main at 0x7f0a286ff2e0>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m178***0m, in ***35mmain***0m
+    ***1mexit_code***0m ***35m***1m=***0m ***1masyncio***0m***35m***1m.***0m***1mrun***0m***1m(***0m***1mrun_checkin***0m***1m(***0m***1margs***0m***1m)***0m***1m)***0m
+    ***36m            │       │   │           └ ***0m***36m***1mNamespace(platform='anyrouter', dry_run=False, debug=False, no_notify=False, force_notify=False)***0m
+    ***36m            │       │   └ ***0m***36m***1m<function run_checkin at 0x7f0a286ff240>***0m
+    ***36m            │       └ ***0m***36m***1m<function run at 0x7f0a2a84e700>***0m
+    ***36m            └ ***0m***36m***1m<module 'asyncio' from '/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/__init__....***0m
+
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           │      │   └ <coroutine object run_checkin at 0x7f0a2a66fef0>
+           │      └ <function Runner.run at 0x7f0a2a7423e0>
+           └ <asyncio.runners.Runner object at 0x7f0a2a0043e0>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           │    │     │                  └ <Task pending name='Task-1' coro=<run_checkin() running at /home/runner/work/sign-in/sign-in/main.py:156> cb=***_run_until_comp...
+           │    │     └ <function BaseEventLoop.run_until_complete at 0x7f0a2a6f3f60>
+           │    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+           └ <asyncio.runners.Runner object at 0x7f0a2a0043e0>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 678, in run_until_complete
+    self.run_forever()
+    │    └ <function BaseEventLoop.run_forever at 0x7f0a2a6f3ec0>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 645, in run_forever
+    self._run_once()
+    │    └ <function BaseEventLoop._run_once at 0x7f0a2a741d00>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 1999, in _run_once
+    handle._run()
+    │      └ <function Handle._run at 0x7f0a2a82ba60>
+    └ <Handle Task.task_wakeup(<Future finished result=None>)>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+    │    │            │    │           │    └ <member '_args' of 'Handle' objects>
+    │    │            │    │           └ <Handle Task.task_wakeup(<Future finished result=None>)>
+    │    │            │    └ <member '_callback' of 'Handle' objects>
+    │    │            └ <Handle Task.task_wakeup(<Future finished result=None>)>
+    │    └ <member '_context' of 'Handle' objects>
+    └ <Handle Task.task_wakeup(<Future finished result=None>)>
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m156***0m, in ***35mrun_checkin***0m
+    ***35m***1mawait***0m ***1mmanager***0m***35m***1m.***0m***1mrun_platform***0m***1m(***0m***1margs***0m***35m***1m.***0m***1mplatform***0m***1m)***0m
+    ***36m      │       │            │    └ ***0m***36m***1m'anyrouter'***0m
+    ***36m      │       │            └ ***0m***36m***1mNamespace(platform='anyrouter', dry_run=False, debug=False, no_notify=False, force_notify=False)***0m
+    ***36m      │       └ ***0m***36m***1m<function PlatformManager.run_platform at 0x7f0a2845c360>***0m
+    ***36m      └ ***0m***36m***1m<platforms.manager.PlatformManager object at 0x7f0a28d56000>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mmanager.py***0m", line ***33m79***0m, in ***35mrun_platform***0m
+    ***1manyrouter_results***0m ***35m***1m=***0m ***35m***1mawait***0m ***1mself***0m***35m***1m.***0m***1m_run_all_anyrouter***0m***1m(***0m***1m)***0m
+    ***36m                          │    └ ***0m***36m***1m<function PlatformManager._run_all_anyrouter at 0x7f0a2845c540>***0m
+    ***36m                          └ ***0m***36m***1m<platforms.manager.PlatformManager object at 0x7f0a28d56000>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mmanager.py***0m", line ***33m141***0m, in ***35m_run_all_anyrouter***0m
+    ***1mresult***0m ***35m***1m=***0m ***35m***1mawait***0m ***1madapter***0m***35m***1m.***0m***1mrun***0m***1m(***0m***1m)***0m
+    ***36m               │       └ ***0m***36m***1m<function BasePlatformAdapter.run at 0x7f0a2a50ccc0>***0m
+    ***36m               └ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter5)***0m
+
+> File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mbase.py***0m", line ***33m129***0m, in ***35mrun***0m
+    ***35m***1mif***0m ***35m***1mnot***0m ***35m***1mawait***0m ***1mself***0m***35m***1m.***0m***1mlogin***0m***1m(***0m***1m)***0m***1m:***0m
+    ***36m             │    └ ***0m***36m***1m<function AnyRouterAdapter.login at 0x7f0a28457c40>***0m
+    ***36m             └ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter5)***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1manyrouter.py***0m", line ***33m83***0m, in ***35mlogin***0m
+    ***1mself***0m***35m***1m.***0m***1mclient***0m ***35m***1m=***0m ***1mhttpx***0m***35m***1m.***0m***1mClient***0m***1m(***0m***1mhttp2***0m***35m***1m=***0m***36m***1mTrue***0m***1m,***0m ***1mtimeout***0m***35m***1m=***0m***34m***1m30.0***0m***1m)***0m
+    ***36m│    │        │     └ ***0m***36m***1m<class 'httpx.Client'>***0m
+    ***36m│    │        └ ***0m***36m***1m<module 'httpx' from '/home/runner/work/sign-in/sign-in/.venv/lib/python3.12/site-packages/httpx/__init__.py'>***0m
+    ***36m│    └ ***0m***36m***1mNone***0m
+    ***36m└ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter5)***0m
+
+  File "/home/runner/work/sign-in/sign-in/.venv/lib/python3.12/site-packages/httpx/_client.py", line 680, in __init__
+    raise ImportError(
+
+***31m***1mImportError***0m:***1m Using http2=True, but the 'h2' package is not installed. Make sure to install httpx using `pip install httpx***http2***`.***0m
+***32m2026-01-26 12:58:30***0m | ***1mINFO    ***0m | ***36mplatforms.base***0m:***36mrun***0m:***36m126***0m - ***1m***AnyRouter (anyrouter)*** 开始签到: anyrouter6***0m
+***32m2026-01-26 12:58:30***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m168***0m - ***1m***anyrouter6*** 启动浏览器获取 WAF cookies...***0m
+***32m2026-01-26 12:58:30***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m194***0m - ***1m***anyrouter6*** 访问登录页面获取初始 cookies...***0m
+***32m2026-01-26 12:58:33***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m215***0m - ***1m***anyrouter6*** 获取到 3 个 WAF cookies***0m
+***32m2026-01-26 12:58:33***0m | ***32m***1mSUCCESS ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m224***0m - ***32m***1m***anyrouter6*** 成功获取所有 WAF cookies***0m
+***32m2026-01-26 12:58:34***0m | ***31m***1mERROR   ***0m | ***36mplatforms.base***0m:***36mrun***0m:***36m151***0m - ***31m***1m***AnyRouter (anyrouter)*** 签到异常: anyrouter6***0m
+***33m***1mTraceback (most recent call last):***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m189***0m, in ***35m<module>***0m
+    ***1mmain***0m***1m(***0m***1m)***0m
+    ***36m└ ***0m***36m***1m<function main at 0x7f0a286ff2e0>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m178***0m, in ***35mmain***0m
+    ***1mexit_code***0m ***35m***1m=***0m ***1masyncio***0m***35m***1m.***0m***1mrun***0m***1m(***0m***1mrun_checkin***0m***1m(***0m***1margs***0m***1m)***0m***1m)***0m
+    ***36m            │       │   │           └ ***0m***36m***1mNamespace(platform='anyrouter', dry_run=False, debug=False, no_notify=False, force_notify=False)***0m
+    ***36m            │       │   └ ***0m***36m***1m<function run_checkin at 0x7f0a286ff240>***0m
+    ***36m            │       └ ***0m***36m***1m<function run at 0x7f0a2a84e700>***0m
+    ***36m            └ ***0m***36m***1m<module 'asyncio' from '/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/__init__....***0m
+
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           │      │   └ <coroutine object run_checkin at 0x7f0a2a66fef0>
+           │      └ <function Runner.run at 0x7f0a2a7423e0>
+           └ <asyncio.runners.Runner object at 0x7f0a2a0043e0>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           │    │     │                  └ <Task pending name='Task-1' coro=<run_checkin() running at /home/runner/work/sign-in/sign-in/main.py:156> cb=***_run_until_comp...
+           │    │     └ <function BaseEventLoop.run_until_complete at 0x7f0a2a6f3f60>
+           │    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+           └ <asyncio.runners.Runner object at 0x7f0a2a0043e0>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 678, in run_until_complete
+    self.run_forever()
+    │    └ <function BaseEventLoop.run_forever at 0x7f0a2a6f3ec0>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 645, in run_forever
+    self._run_once()
+    │    └ <function BaseEventLoop._run_once at 0x7f0a2a741d00>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 1999, in _run_once
+    handle._run()
+    │      └ <function Handle._run at 0x7f0a2a82ba60>
+    └ <Handle Task.task_wakeup(<Future finished result=None>)>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+    │    │            │    │           │    └ <member '_args' of 'Handle' objects>
+    │    │            │    │           └ <Handle Task.task_wakeup(<Future finished result=None>)>
+    │    │            │    └ <member '_callback' of 'Handle' objects>
+    │    │            └ <Handle Task.task_wakeup(<Future finished result=None>)>
+    │    └ <member '_context' of 'Handle' objects>
+    └ <Handle Task.task_wakeup(<Future finished result=None>)>
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m156***0m, in ***35mrun_checkin***0m
+    ***35m***1mawait***0m ***1mmanager***0m***35m***1m.***0m***1mrun_platform***0m***1m(***0m***1margs***0m***35m***1m.***0m***1mplatform***0m***1m)***0m
+    ***36m      │       │            │    └ ***0m***36m***1m'anyrouter'***0m
+    ***36m      │       │            └ ***0m***36m***1mNamespace(platform='anyrouter', dry_run=False, debug=False, no_notify=False, force_notify=False)***0m
+    ***36m      │       └ ***0m***36m***1m<function PlatformManager.run_platform at 0x7f0a2845c360>***0m
+    ***36m      └ ***0m***36m***1m<platforms.manager.PlatformManager object at 0x7f0a28d56000>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mmanager.py***0m", line ***33m79***0m, in ***35mrun_platform***0m
+    ***1manyrouter_results***0m ***35m***1m=***0m ***35m***1mawait***0m ***1mself***0m***35m***1m.***0m***1m_run_all_anyrouter***0m***1m(***0m***1m)***0m
+    ***36m                          │    └ ***0m***36m***1m<function PlatformManager._run_all_anyrouter at 0x7f0a2845c540>***0m
+    ***36m                          └ ***0m***36m***1m<platforms.manager.PlatformManager object at 0x7f0a28d56000>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mmanager.py***0m", line ***33m141***0m, in ***35m_run_all_anyrouter***0m
+    ***1mresult***0m ***35m***1m=***0m ***35m***1mawait***0m ***1madapter***0m***35m***1m.***0m***1mrun***0m***1m(***0m***1m)***0m
+    ***36m               │       └ ***0m***36m***1m<function BasePlatformAdapter.run at 0x7f0a2a50ccc0>***0m
+    ***36m               └ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter6)***0m
+
+> File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mbase.py***0m", line ***33m129***0m, in ***35mrun***0m
+    ***35m***1mif***0m ***35m***1mnot***0m ***35m***1mawait***0m ***1mself***0m***35m***1m.***0m***1mlogin***0m***1m(***0m***1m)***0m***1m:***0m
+    ***36m             │    └ ***0m***36m***1m<function AnyRouterAdapter.login at 0x7f0a28457c40>***0m
+    ***36m             └ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter6)***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1manyrouter.py***0m", line ***33m83***0m, in ***35mlogin***0m
+    ***1mself***0m***35m***1m.***0m***1mclient***0m ***35m***1m=***0m ***1mhttpx***0m***35m***1m.***0m***1mClient***0m***1m(***0m***1mhttp2***0m***35m***1m=***0m***36m***1mTrue***0m***1m,***0m ***1mtimeout***0m***35m***1m=***0m***34m***1m30.0***0m***1m)***0m
+    ***36m│    │        │     └ ***0m***36m***1m<class 'httpx.Client'>***0m
+    ***36m│    │        └ ***0m***36m***1m<module 'httpx' from '/home/runner/work/sign-in/sign-in/.venv/lib/python3.12/site-packages/httpx/__init__.py'>***0m
+    ***36m│    └ ***0m***36m***1mNone***0m
+    ***36m└ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter6)***0m
+
+  File "/home/runner/work/sign-in/sign-in/.venv/lib/python3.12/site-packages/httpx/_client.py", line 680, in __init__
+    raise ImportError(
+
+***31m***1mImportError***0m:***1m Using http2=True, but the 'h2' package is not installed. Make sure to install httpx using `pip install httpx***http2***`.***0m
+***32m2026-01-26 12:58:34***0m | ***1mINFO    ***0m | ***36mplatforms.base***0m:***36mrun***0m:***36m126***0m - ***1m***AnyRouter (anyrouter)*** 开始签到: anyrouter7***0m
+***32m2026-01-26 12:58:34***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m168***0m - ***1m***anyrouter7*** 启动浏览器获取 WAF cookies...***0m
+***32m2026-01-26 12:58:34***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m194***0m - ***1m***anyrouter7*** 访问登录页面获取初始 cookies...***0m
+***32m2026-01-26 12:58:39***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m215***0m - ***1m***anyrouter7*** 获取到 3 个 WAF cookies***0m
+***32m2026-01-26 12:58:39***0m | ***32m***1mSUCCESS ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m224***0m - ***32m***1m***anyrouter7*** 成功获取所有 WAF cookies***0m
+***32m2026-01-26 12:58:39***0m | ***31m***1mERROR   ***0m | ***36mplatforms.base***0m:***36mrun***0m:***36m151***0m - ***31m***1m***AnyRouter (anyrouter)*** 签到异常: anyrouter7***0m
+***33m***1mTraceback (most recent call last):***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m189***0m, in ***35m<module>***0m
+    ***1mmain***0m***1m(***0m***1m)***0m
+    ***36m└ ***0m***36m***1m<function main at 0x7f0a286ff2e0>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m178***0m, in ***35mmain***0m
+    ***1mexit_code***0m ***35m***1m=***0m ***1masyncio***0m***35m***1m.***0m***1mrun***0m***1m(***0m***1mrun_checkin***0m***1m(***0m***1margs***0m***1m)***0m***1m)***0m
+    ***36m            │       │   │           └ ***0m***36m***1mNamespace(platform='anyrouter', dry_run=False, debug=False, no_notify=False, force_notify=False)***0m
+    ***36m            │       │   └ ***0m***36m***1m<function run_checkin at 0x7f0a286ff240>***0m
+    ***36m            │       └ ***0m***36m***1m<function run at 0x7f0a2a84e700>***0m
+    ***36m            └ ***0m***36m***1m<module 'asyncio' from '/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/__init__....***0m
+
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           │      │   └ <coroutine object run_checkin at 0x7f0a2a66fef0>
+           │      └ <function Runner.run at 0x7f0a2a7423e0>
+           └ <asyncio.runners.Runner object at 0x7f0a2a0043e0>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           │    │     │                  └ <Task pending name='Task-1' coro=<run_checkin() running at /home/runner/work/sign-in/sign-in/main.py:156> cb=***_run_until_comp...
+           │    │     └ <function BaseEventLoop.run_until_complete at 0x7f0a2a6f3f60>
+           │    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+           └ <asyncio.runners.Runner object at 0x7f0a2a0043e0>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 678, in run_until_complete
+    self.run_forever()
+    │    └ <function BaseEventLoop.run_forever at 0x7f0a2a6f3ec0>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 645, in run_forever
+    self._run_once()
+    │    └ <function BaseEventLoop._run_once at 0x7f0a2a741d00>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 1999, in _run_once
+    handle._run()
+    │      └ <function Handle._run at 0x7f0a2a82ba60>
+    └ <Handle Task.task_wakeup(<Future finished result=None>)>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+    │    │            │    │           │    └ <member '_args' of 'Handle' objects>
+    │    │            │    │           └ <Handle Task.task_wakeup(<Future finished result=None>)>
+    │    │            │    └ <member '_callback' of 'Handle' objects>
+    │    │            └ <Handle Task.task_wakeup(<Future finished result=None>)>
+    │    └ <member '_context' of 'Handle' objects>
+    └ <Handle Task.task_wakeup(<Future finished result=None>)>
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m156***0m, in ***35mrun_checkin***0m
+    ***35m***1mawait***0m ***1mmanager***0m***35m***1m.***0m***1mrun_platform***0m***1m(***0m***1margs***0m***35m***1m.***0m***1mplatform***0m***1m)***0m
+    ***36m      │       │            │    └ ***0m***36m***1m'anyrouter'***0m
+    ***36m      │       │            └ ***0m***36m***1mNamespace(platform='anyrouter', dry_run=False, debug=False, no_notify=False, force_notify=False)***0m
+    ***36m      │       └ ***0m***36m***1m<function PlatformManager.run_platform at 0x7f0a2845c360>***0m
+    ***36m      └ ***0m***36m***1m<platforms.manager.PlatformManager object at 0x7f0a28d56000>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mmanager.py***0m", line ***33m79***0m, in ***35mrun_platform***0m
+    ***1manyrouter_results***0m ***35m***1m=***0m ***35m***1mawait***0m ***1mself***0m***35m***1m.***0m***1m_run_all_anyrouter***0m***1m(***0m***1m)***0m
+    ***36m                          │    └ ***0m***36m***1m<function PlatformManager._run_all_anyrouter at 0x7f0a2845c540>***0m
+    ***36m                          └ ***0m***36m***1m<platforms.manager.PlatformManager object at 0x7f0a28d56000>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mmanager.py***0m", line ***33m141***0m, in ***35m_run_all_anyrouter***0m
+    ***1mresult***0m ***35m***1m=***0m ***35m***1mawait***0m ***1madapter***0m***35m***1m.***0m***1mrun***0m***1m(***0m***1m)***0m
+    ***36m               │       └ ***0m***36m***1m<function BasePlatformAdapter.run at 0x7f0a2a50ccc0>***0m
+    ***36m               └ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter7)***0m
+
+> File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mbase.py***0m", line ***33m129***0m, in ***35mrun***0m
+    ***35m***1mif***0m ***35m***1mnot***0m ***35m***1mawait***0m ***1mself***0m***35m***1m.***0m***1mlogin***0m***1m(***0m***1m)***0m***1m:***0m
+    ***36m             │    └ ***0m***36m***1m<function AnyRouterAdapter.login at 0x7f0a28457c40>***0m
+    ***36m             └ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter7)***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1manyrouter.py***0m", line ***33m83***0m, in ***35mlogin***0m
+    ***1mself***0m***35m***1m.***0m***1mclient***0m ***35m***1m=***0m ***1mhttpx***0m***35m***1m.***0m***1mClient***0m***1m(***0m***1mhttp2***0m***35m***1m=***0m***36m***1mTrue***0m***1m,***0m ***1mtimeout***0m***35m***1m=***0m***34m***1m30.0***0m***1m)***0m
+    ***36m│    │        │     └ ***0m***36m***1m<class 'httpx.Client'>***0m
+    ***36m│    │        └ ***0m***36m***1m<module 'httpx' from '/home/runner/work/sign-in/sign-in/.venv/lib/python3.12/site-packages/httpx/__init__.py'>***0m
+    ***36m│    └ ***0m***36m***1mNone***0m
+    ***36m└ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=anyrouter7)***0m
+
+  File "/home/runner/work/sign-in/sign-in/.venv/lib/python3.12/site-packages/httpx/_client.py", line 680, in __init__
+    raise ImportError(
+
+***31m***1mImportError***0m:***1m Using http2=True, but the 'h2' package is not installed. Make sure to install httpx using `pip install httpx***http2***`.***0m
+***32m2026-01-26 12:58:39***0m | ***1mINFO    ***0m | ***36mplatforms.base***0m:***36mrun***0m:***36m126***0m - ***1m***AnyRouter (anyrouter)*** 开始签到: LinuxDoQQ***0m
+***32m2026-01-26 12:58:39***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m168***0m - ***1m***LinuxDoQQ*** 启动浏览器获取 WAF cookies...***0m
+***32m2026-01-26 12:58:39***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m194***0m - ***1m***LinuxDoQQ*** 访问登录页面获取初始 cookies...***0m
+***32m2026-01-26 12:58:43***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m215***0m - ***1m***LinuxDoQQ*** 获取到 3 个 WAF cookies***0m
+***32m2026-01-26 12:58:43***0m | ***32m***1mSUCCESS ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m224***0m - ***32m***1m***LinuxDoQQ*** 成功获取所有 WAF cookies***0m
+***32m2026-01-26 12:58:43***0m | ***31m***1mERROR   ***0m | ***36mplatforms.base***0m:***36mrun***0m:***36m151***0m - ***31m***1m***AnyRouter (anyrouter)*** 签到异常: LinuxDoQQ***0m
+***33m***1mTraceback (most recent call last):***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m189***0m, in ***35m<module>***0m
+    ***1mmain***0m***1m(***0m***1m)***0m
+    ***36m└ ***0m***36m***1m<function main at 0x7f0a286ff2e0>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m178***0m, in ***35mmain***0m
+    ***1mexit_code***0m ***35m***1m=***0m ***1masyncio***0m***35m***1m.***0m***1mrun***0m***1m(***0m***1mrun_checkin***0m***1m(***0m***1margs***0m***1m)***0m***1m)***0m
+    ***36m            │       │   │           └ ***0m***36m***1mNamespace(platform='anyrouter', dry_run=False, debug=False, no_notify=False, force_notify=False)***0m
+    ***36m            │       │   └ ***0m***36m***1m<function run_checkin at 0x7f0a286ff240>***0m
+    ***36m            │       └ ***0m***36m***1m<function run at 0x7f0a2a84e700>***0m
+    ***36m            └ ***0m***36m***1m<module 'asyncio' from '/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/__init__....***0m
+
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           │      │   └ <coroutine object run_checkin at 0x7f0a2a66fef0>
+           │      └ <function Runner.run at 0x7f0a2a7423e0>
+           └ <asyncio.runners.Runner object at 0x7f0a2a0043e0>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           │    │     │                  └ <Task pending name='Task-1' coro=<run_checkin() running at /home/runner/work/sign-in/sign-in/main.py:156> cb=***_run_until_comp...
+           │    │     └ <function BaseEventLoop.run_until_complete at 0x7f0a2a6f3f60>
+           │    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+           └ <asyncio.runners.Runner object at 0x7f0a2a0043e0>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 678, in run_until_complete
+    self.run_forever()
+    │    └ <function BaseEventLoop.run_forever at 0x7f0a2a6f3ec0>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 645, in run_forever
+    self._run_once()
+    │    └ <function BaseEventLoop._run_once at 0x7f0a2a741d00>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 1999, in _run_once
+    handle._run()
+    │      └ <function Handle._run at 0x7f0a2a82ba60>
+    └ <Handle Task.task_wakeup(<Future finished result=None>)>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+    │    │            │    │           │    └ <member '_args' of 'Handle' objects>
+    │    │            │    │           └ <Handle Task.task_wakeup(<Future finished result=None>)>
+    │    │            │    └ <member '_callback' of 'Handle' objects>
+    │    │            └ <Handle Task.task_wakeup(<Future finished result=None>)>
+    │    └ <member '_context' of 'Handle' objects>
+    └ <Handle Task.task_wakeup(<Future finished result=None>)>
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m156***0m, in ***35mrun_checkin***0m
+    ***35m***1mawait***0m ***1mmanager***0m***35m***1m.***0m***1mrun_platform***0m***1m(***0m***1margs***0m***35m***1m.***0m***1mplatform***0m***1m)***0m
+    ***36m      │       │            │    └ ***0m***36m***1m'anyrouter'***0m
+    ***36m      │       │            └ ***0m***36m***1mNamespace(platform='anyrouter', dry_run=False, debug=False, no_notify=False, force_notify=False)***0m
+    ***36m      │       └ ***0m***36m***1m<function PlatformManager.run_platform at 0x7f0a2845c360>***0m
+    ***36m      └ ***0m***36m***1m<platforms.manager.PlatformManager object at 0x7f0a28d56000>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mmanager.py***0m", line ***33m79***0m, in ***35mrun_platform***0m
+    ***1manyrouter_results***0m ***35m***1m=***0m ***35m***1mawait***0m ***1mself***0m***35m***1m.***0m***1m_run_all_anyrouter***0m***1m(***0m***1m)***0m
+    ***36m                          │    └ ***0m***36m***1m<function PlatformManager._run_all_anyrouter at 0x7f0a2845c540>***0m
+    ***36m                          └ ***0m***36m***1m<platforms.manager.PlatformManager object at 0x7f0a28d56000>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mmanager.py***0m", line ***33m141***0m, in ***35m_run_all_anyrouter***0m
+    ***1mresult***0m ***35m***1m=***0m ***35m***1mawait***0m ***1madapter***0m***35m***1m.***0m***1mrun***0m***1m(***0m***1m)***0m
+    ***36m               │       └ ***0m***36m***1m<function BasePlatformAdapter.run at 0x7f0a2a50ccc0>***0m
+    ***36m               └ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=LinuxDoQQ)***0m
+
+> File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mbase.py***0m", line ***33m129***0m, in ***35mrun***0m
+    ***35m***1mif***0m ***35m***1mnot***0m ***35m***1mawait***0m ***1mself***0m***35m***1m.***0m***1mlogin***0m***1m(***0m***1m)***0m***1m:***0m
+    ***36m             │    └ ***0m***36m***1m<function AnyRouterAdapter.login at 0x7f0a28457c40>***0m
+    ***36m             └ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=LinuxDoQQ)***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1manyrouter.py***0m", line ***33m83***0m, in ***35mlogin***0m
+    ***1mself***0m***35m***1m.***0m***1mclient***0m ***35m***1m=***0m ***1mhttpx***0m***35m***1m.***0m***1mClient***0m***1m(***0m***1mhttp2***0m***35m***1m=***0m***36m***1mTrue***0m***1m,***0m ***1mtimeout***0m***35m***1m=***0m***34m***1m30.0***0m***1m)***0m
+    ***36m│    │        │     └ ***0m***36m***1m<class 'httpx.Client'>***0m
+    ***36m│    │        └ ***0m***36m***1m<module 'httpx' from '/home/runner/work/sign-in/sign-in/.venv/lib/python3.12/site-packages/httpx/__init__.py'>***0m
+    ***36m│    └ ***0m***36m***1mNone***0m
+    ***36m└ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=LinuxDoQQ)***0m
+
+  File "/home/runner/work/sign-in/sign-in/.venv/lib/python3.12/site-packages/httpx/_client.py", line 680, in __init__
+    raise ImportError(
+
+***31m***1mImportError***0m:***1m Using http2=True, but the 'h2' package is not installed. Make sure to install httpx using `pip install httpx***http2***`.***0m
+***32m2026-01-26 12:58:43***0m | ***1mINFO    ***0m | ***36mplatforms.base***0m:***36mrun***0m:***36m126***0m - ***1m***AnyRouter (anyrouter)*** 开始签到: LinuxDo139***0m
+***32m2026-01-26 12:58:43***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m168***0m - ***1m***LinuxDo139*** 启动浏览器获取 WAF cookies...***0m
+***32m2026-01-26 12:58:43***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m194***0m - ***1m***LinuxDo139*** 访问登录页面获取初始 cookies...***0m
+***32m2026-01-26 12:58:46***0m | ***1mINFO    ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m215***0m - ***1m***LinuxDo139*** 获取到 3 个 WAF cookies***0m
+***32m2026-01-26 12:58:46***0m | ***32m***1mSUCCESS ***0m | ***36mplatforms.anyrouter***0m:***36m_get_waf_cookies***0m:***36m224***0m - ***32m***1m***LinuxDo139*** 成功获取所有 WAF cookies***0m
+***32m2026-01-26 12:58:46***0m | ***31m***1mERROR   ***0m | ***36mplatforms.base***0m:***36mrun***0m:***36m151***0m - ***31m***1m***AnyRouter (anyrouter)*** 签到异常: LinuxDo139***0m
+***33m***1mTraceback (most recent call last):***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m189***0m, in ***35m<module>***0m
+    ***1mmain***0m***1m(***0m***1m)***0m
+    ***36m└ ***0m***36m***1m<function main at 0x7f0a286ff2e0>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m178***0m, in ***35mmain***0m
+    ***1mexit_code***0m ***35m***1m=***0m ***1masyncio***0m***35m***1m.***0m***1mrun***0m***1m(***0m***1mrun_checkin***0m***1m(***0m***1margs***0m***1m)***0m***1m)***0m
+    ***36m            │       │   │           └ ***0m***36m***1mNamespace(platform='anyrouter', dry_run=False, debug=False, no_notify=False, force_notify=False)***0m
+    ***36m            │       │   └ ***0m***36m***1m<function run_checkin at 0x7f0a286ff240>***0m
+    ***36m            │       └ ***0m***36m***1m<function run at 0x7f0a2a84e700>***0m
+    ***36m            └ ***0m***36m***1m<module 'asyncio' from '/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/__init__....***0m
+
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           │      │   └ <coroutine object run_checkin at 0x7f0a2a66fef0>
+           │      └ <function Runner.run at 0x7f0a2a7423e0>
+           └ <asyncio.runners.Runner object at 0x7f0a2a0043e0>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           │    │     │                  └ <Task pending name='Task-1' coro=<run_checkin() running at /home/runner/work/sign-in/sign-in/main.py:156> cb=***_run_until_comp...
+           │    │     └ <function BaseEventLoop.run_until_complete at 0x7f0a2a6f3f60>
+           │    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+           └ <asyncio.runners.Runner object at 0x7f0a2a0043e0>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 678, in run_until_complete
+    self.run_forever()
+    │    └ <function BaseEventLoop.run_forever at 0x7f0a2a6f3ec0>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 645, in run_forever
+    self._run_once()
+    │    └ <function BaseEventLoop._run_once at 0x7f0a2a741d00>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/base_events.py", line 1999, in _run_once
+    handle._run()
+    │      └ <function Handle._run at 0x7f0a2a82ba60>
+    └ <Handle Task.task_wakeup(<Future finished result=None>)>
+  File "/home/runner/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/asyncio/events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+    │    │            │    │           │    └ <member '_args' of 'Handle' objects>
+    │    │            │    │           └ <Handle Task.task_wakeup(<Future finished result=None>)>
+    │    │            │    └ <member '_callback' of 'Handle' objects>
+    │    │            └ <Handle Task.task_wakeup(<Future finished result=None>)>
+    │    └ <member '_context' of 'Handle' objects>
+    └ <Handle Task.task_wakeup(<Future finished result=None>)>
+
+  File "***32m/home/runner/work/sign-in/sign-in/***0m***32m***1mmain.py***0m", line ***33m156***0m, in ***35mrun_checkin***0m
+    ***35m***1mawait***0m ***1mmanager***0m***35m***1m.***0m***1mrun_platform***0m***1m(***0m***1margs***0m***35m***1m.***0m***1mplatform***0m***1m)***0m
+    ***36m      │       │            │    └ ***0m***36m***1m'anyrouter'***0m
+    ***36m      │       │            └ ***0m***36m***1mNamespace(platform='anyrouter', dry_run=False, debug=False, no_notify=False, force_notify=False)***0m
+    ***36m      │       └ ***0m***36m***1m<function PlatformManager.run_platform at 0x7f0a2845c360>***0m
+    ***36m      └ ***0m***36m***1m<platforms.manager.PlatformManager object at 0x7f0a28d56000>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mmanager.py***0m", line ***33m79***0m, in ***35mrun_platform***0m
+    ***1manyrouter_results***0m ***35m***1m=***0m ***35m***1mawait***0m ***1mself***0m***35m***1m.***0m***1m_run_all_anyrouter***0m***1m(***0m***1m)***0m
+    ***36m                          │    └ ***0m***36m***1m<function PlatformManager._run_all_anyrouter at 0x7f0a2845c540>***0m
+    ***36m                          └ ***0m***36m***1m<platforms.manager.PlatformManager object at 0x7f0a28d56000>***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mmanager.py***0m", line ***33m141***0m, in ***35m_run_all_anyrouter***0m
+    ***1mresult***0m ***35m***1m=***0m ***35m***1mawait***0m ***1madapter***0m***35m***1m.***0m***1mrun***0m***1m(***0m***1m)***0m
+    ***36m               │       └ ***0m***36m***1m<function BasePlatformAdapter.run at 0x7f0a2a50ccc0>***0m
+    ***36m               └ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=LinuxDo139)***0m
+
+> File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1mbase.py***0m", line ***33m129***0m, in ***35mrun***0m
+    ***35m***1mif***0m ***35m***1mnot***0m ***35m***1mawait***0m ***1mself***0m***35m***1m.***0m***1mlogin***0m***1m(***0m***1m)***0m***1m:***0m
+    ***36m             │    └ ***0m***36m***1m<function AnyRouterAdapter.login at 0x7f0a28457c40>***0m
+    ***36m             └ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=LinuxDo139)***0m
+
+  File "***32m/home/runner/work/sign-in/sign-in/platforms/***0m***32m***1manyrouter.py***0m", line ***33m83***0m, in ***35mlogin***0m
+    ***1mself***0m***35m***1m.***0m***1mclient***0m ***35m***1m=***0m ***1mhttpx***0m***35m***1m.***0m***1mClient***0m***1m(***0m***1mhttp2***0m***35m***1m=***0m***36m***1mTrue***0m***1m,***0m ***1mtimeout***0m***35m***1m=***0m***34m***1m30.0***0m***1m)***0m
+    ***36m│    │        │     └ ***0m***36m***1m<class 'httpx.Client'>***0m
+    ***36m│    │        └ ***0m***36m***1m<module 'httpx' from '/home/runner/work/sign-in/sign-in/.venv/lib/python3.12/site-packages/httpx/__init__.py'>***0m
+    ***36m│    └ ***0m***36m***1mNone***0m
+    ***36m└ ***0m***36m***1mAnyRouterAdapter(platform=AnyRouter (anyrouter), account=LinuxDo139)***0m
+
+  File "/home/runner/work/sign-in/sign-in/.venv/lib/python3.12/site-packages/httpx/_client.py", line 680, in __init__
+    raise ImportError(
+
+***31m***1mImportError***0m:***1m Using http2=True, but the 'h2' package is not installed. Make sure to install httpx using `pip install httpx***http2***`.***0m
+***32m2026-01-26 12:58:46***0m | ***1mINFO    ***0m | ***36m__main__***0m:***36mrun_checkin***0m:***36m161***0m - ***1m签到完成 - 成功: 0, 失败: 8, 跳过: 0***0m
+##***error***Process completed with exit code 1.

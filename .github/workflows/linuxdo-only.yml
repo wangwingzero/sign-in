@@ -9,6 +9,9 @@ on:
 jobs:
   linuxdo-checkin:
     runs-on: ubuntu-22.04
+    permissions:
+      actions: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       
