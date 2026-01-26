@@ -45,9 +45,17 @@ jobs:
           LINUXDO_PASSWORD: ${{ secrets.LINUXDO_PASSWORD }}
           BROWSE_ENABLED: ${{ secrets.BROWSE_ENABLED }}
           
-          # 通知配置
+          # 通知配置 - Email
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          CUSTOM_SMTP_SERVER: ${{ secrets.CUSTOM_SMTP_SERVER }}
+          
+          # 通知配置 - Gotify
           GOTIFY_URL: ${{ secrets.GOTIFY_URL }}
           GOTIFY_TOKEN: ${{ secrets.GOTIFY_TOKEN }}
+          GOTIFY_PRIORITY: ${{ secrets.GOTIFY_PRIORITY }}
           SC3_PUSH_KEY: ${{ secrets.SC3_PUSH_KEY }}
           WXPUSH_URL: ${{ secrets.WXPUSH_URL }}
           WXPUSH_TOKEN: ${{ secrets.WXPUSH_TOKEN }}
