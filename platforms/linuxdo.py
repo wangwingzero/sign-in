@@ -404,11 +404,25 @@ class LinuxDoAdapter(BasePlatformAdapter):
     async def _click_one_topic(self, topic_url: str) -> bool:
         """点击单个主题帖"""
         new_page = await self.context.new_page()
+        start_time = time.time()
         try:
             await new_page.goto(topic_url, wait_until="domcontentloaded")
+            
+            # 获取帖子 ID 用于 timings 接口
+            topic_id = self._extract_topic_id(topic_url)
+            
+            # 浏览帖子
+            await self._browse_post(new_page)
+            
+            # 计算阅读时间并发送 timings
+            elapsed_time = int((time.time() - start_time) * 1000)  # 毫秒
+            if topic_id:
+                await self._send_timings(new_page, topic_id, elapsed_time)
+            
+            # 30% 概率点赞
             if random.random() < 0.3:
                 await self._click_like(new_page)
-            await self._browse_post(new_page)
+            
             return True
         except Exception as e:
             logger.warning(f"浏览帖子失败: {e}")
@@ -419,8 +433,48 @@ class LinuxDoAdapter(BasePlatformAdapter):
             except Exception:
                 pass
     
+    def _extract_topic_id(self, url: str) -> Optional[int]:
+        """从 URL 提取帖子 ID"""
+        try:
+            # URL 格式: https://linux.do/t/topic/123456 或 https://linux.do/t/topic/123456/1
+            import re
+            match = re.search(r'/t/topic/(\d+)', url)
+            if match:
+                return int(match.group(1))
+        except Exception:
+            pass
+        return None
+    
+    async def _send_timings(self, page: Page, topic_id: int, time_ms: int) -> None:
+        """发送阅读时间到 Discourse timings 接口"""
+        try:
+            # 通过浏览器发送 timings 请求，自动携带 cookies 和 CSRF token
+            await page.evaluate(f"""
+                (async () => {{
+                    try {{
+                        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+                        if (!csrfToken) return;
+                        
+                        await fetch('/topics/timings', {{
+                            method: 'POST',
+                            headers: {{
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                                'X-CSRF-Token': csrfToken,
+                                'X-Requested-With': 'XMLHttpRequest'
+                            }},
+                            body: 'topic_id={topic_id}&topic_time={time_ms}&timings%5B1%5D={time_ms}'
+                        }});
+                    }} catch (e) {{}}
+                }})();
+            """)
+            logger.debug(f"已发送 timings: topic_id={topic_id}, time={time_ms}ms")
+        except Exception as e:
+            logger.debug(f"发送 timings 失败: {e}")
+    
     async def _browse_post(self, page: Page) -> None:
-        """浏览帖子内容"""
+        """浏览帖子内容，确保足够的停留时间"""
+        start_time = time.time()
+        min_browse_time = random.uniform(4, 6)  # 最少停留 4-6 秒
         prev_url = None
         
         for _ in range(10):
@@ -429,7 +483,9 @@ class LinuxDoAdapter(BasePlatformAdapter):
             await page.evaluate(f"window.scrollBy(0, {scroll_distance})")
             logger.info(f"已加载页面: {page.url}")
             
-            if random.random() < 0.03:
+            # 3% 概率随机退出（但要确保最小停留时间）
+            elapsed = time.time() - start_time
+            if random.random() < 0.03 and elapsed >= min_browse_time:
                 logger.success("随机退出浏览")
                 break
             
@@ -441,8 +497,17 @@ class LinuxDoAdapter(BasePlatformAdapter):
             if current_url != prev_url:
                 prev_url = current_url
             elif at_bottom and prev_url == current_url:
-                logger.success("已到达页面底部，退出浏览")
-                break
+                # 到达底部，但要确保最小停留时间
+                if elapsed >= min_browse_time:
+                    logger.success("已到达页面底部，退出浏览")
+                    break
+                else:
+                    # 还没到最小时间，继续等待
+                    remaining = min_browse_time - elapsed
+                    logger.info(f"页面较短，额外等待 {remaining:.1f} 秒...")
+                    await asyncio.sleep(remaining)
+                    logger.success("已到达页面底部，退出浏览")
+                    break
             
             wait_time = random.uniform(2, 4)
             logger.info(f"等待 {wait_time:.2f} 秒...")
