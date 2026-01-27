@@ -211,34 +211,12 @@ class PlatformManager:
         return results
     
     async def _run_all_anyrouter(self) -> list[CheckinResult]:
-        """运行所有 AnyRouter 账号签到（包括 provider=wong 的账号）"""
+        """运行所有 AnyRouter 账号签到（跳过 provider=wong，由 _run_all_wong 处理）"""
         results = []
         
         for i, account in enumerate(self.config.anyrouter_accounts):
-            # 特殊处理 provider=wong 的账号，使用 WongAdapter
+            # 跳过 provider=wong 的账号，这些由 _run_all_wong 处理
             if account.provider == "wong":
-                logger.info(f"检测到 WONG 账号 (provider=wong): {account.get_display_name(i)}")
-                
-                # 从 cookies 中提取 session
-                session_cookie = self._extract_session_cookie(account.cookies)
-                
-                adapter = WongAdapter(
-                    fallback_cookies=session_cookie,
-                    api_user=account.api_user,
-                    account_name=account.get_display_name(i),
-                )
-                
-                try:
-                    result = await adapter.run()
-                    results.append(result)
-                except Exception as e:
-                    logger.error(f"WONG 账号 {account.get_display_name(i)} 执行异常: {e}")
-                    results.append(CheckinResult(
-                        platform="WONG公益站",
-                        account=account.get_display_name(i),
-                        status=CheckinStatus.FAILED,
-                        message=f"执行异常: {str(e)}",
-                    ))
                 continue
             
             provider = self.config.providers.get(account.provider)
