@@ -412,8 +412,15 @@ class LinuxDoAdapter(BasePlatformAdapter):
             self._connect_info = {}
     
     async def _click_topics(self) -> int:
-        """点击并浏览主题帖，优先浏览未读/新帖子"""
-        # 优先从未读和新帖子页面获取
+        """点击并浏览主题帖，优先选择楼层数多的帖子以高效增加已读数
+        
+        策略：
+        1. 从未读/新帖子页面收集帖子
+        2. 用 API 获取每个帖子的楼层数
+        3. 按楼层数排序，优先处理长帖子
+        4. 直接发送 timings API 标记所有楼层为已读
+        """
+        # 收集帖子 URL
         topic_urls = []
         
         # 1. 先尝试获取未读帖子
@@ -426,14 +433,21 @@ class LinuxDoAdapter(BasePlatformAdapter):
         new_urls = await self._get_topics_from_page("https://linux.do/new")
         if new_urls:
             logger.info(f"发现 {len(new_urls)} 个新帖子")
-            # 去重后添加
             for url in new_urls:
                 if url not in topic_urls:
                     topic_urls.append(url)
         
-        # 3. 如果未读和新帖子不够，从首页补充
-        if len(topic_urls) < 10:
-            logger.info("未读/新帖子较少，从首页补充")
+        # 3. 从热门帖子补充（通常楼层数更多）
+        if len(topic_urls) < 20:
+            logger.info("从热门帖子补充")
+            top_urls = await self._get_topics_from_page("https://linux.do/top")
+            for url in top_urls:
+                if url not in topic_urls:
+                    topic_urls.append(url)
+        
+        # 4. 从首页补充
+        if len(topic_urls) < 20:
+            logger.info("从首页补充")
             home_urls = await self._get_topics_from_page("https://linux.do/")
             for url in home_urls:
                 if url not in topic_urls:
@@ -443,26 +457,53 @@ class LinuxDoAdapter(BasePlatformAdapter):
             logger.error("没有可浏览的帖子")
             return 0
         
-        logger.info(f"共收集到 {len(topic_urls)} 个帖子，开始按时间浏览（目标 {self.browse_duration} 秒）")
+        logger.info(f"共收集到 {len(topic_urls)} 个帖子，获取楼层信息...")
         
-        # 按时间浏览（未读帖子优先，不打乱顺序）
+        # 5. 获取每个帖子的楼层数，按楼层数排序
+        topics_with_info = []
+        for url in topic_urls[:50]:  # 最多检查 50 个
+            topic_id = self._extract_topic_id(url)
+            if topic_id:
+                info = self._get_topic_info(topic_id)
+                if info:
+                    topics_with_info.append({
+                        "url": url,
+                        "topic_id": topic_id,
+                        "posts": info["highest_post_number"],
+                        "title": info.get("title", "")[:20],
+                    })
+        
+        # 按楼层数降序排序（优先处理长帖子）
+        topics_with_info.sort(key=lambda x: x["posts"], reverse=True)
+        
+        if topics_with_info:
+            top_5 = topics_with_info[:5]
+            logger.info(f"楼层数最多的帖子: {[(t['title'], t['posts']) for t in top_5]}")
+        
+        # 6. 按时间浏览
         start_time = time.time()
         browsed_count = 0
+        total_posts_read = 0
         
-        for url in topic_urls:
+        for topic in topics_with_info:
             elapsed = time.time() - start_time
             if elapsed >= self.browse_duration:
                 logger.info(f"已达到目标浏览时间 {self.browse_duration} 秒")
                 break
             
             remaining = self.browse_duration - elapsed
-            logger.info(f"浏览第 {browsed_count + 1} 个帖子，已用时 {elapsed:.0f}s，剩余 {remaining:.0f}s")
+            logger.info(f"浏览第 {browsed_count + 1} 个帖子 ({topic['posts']}楼)，已用时 {elapsed:.0f}s，剩余 {remaining:.0f}s")
             
-            await self._click_one_topic(url)
+            success = await self._click_one_topic(topic["url"])
+            if success:
+                total_posts_read += topic["posts"]
             browsed_count += 1
+            
+            # 帖子之间短暂间隔
+            await asyncio.sleep(random.uniform(0.5, 1.5))
         
         total_time = time.time() - start_time
-        logger.info(f"浏览完成，共浏览 {browsed_count} 个帖子，用时 {total_time:.0f} 秒")
+        logger.info(f"浏览完成，共浏览 {browsed_count} 个帖子，标记 {total_posts_read} 个楼层为已读，用时 {total_time:.0f} 秒")
         return browsed_count
     
     async def _get_topics_from_page(self, page_url: str) -> list[str]:
@@ -506,28 +547,46 @@ class LinuxDoAdapter(BasePlatformAdapter):
         return topic_urls
     
     async def _click_one_topic(self, topic_url: str) -> bool:
-        """点击单个主题帖"""
+        """点击单个主题帖，高效标记所有楼层为已读
+        
+        策略：
+        1. 用 API 获取帖子总楼层数
+        2. 打开页面获取 CSRF token
+        3. 直接发送所有楼层的 timings（不需要真的滚动）
+        4. 简单滚动一下模拟浏览行为
+        """
+        topic_id = self._extract_topic_id(topic_url)
+        if not topic_id:
+            logger.warning(f"无法提取帖子 ID: {topic_url}")
+            return False
+        
+        # 1. 先用 API 获取帖子信息
+        topic_info = self._get_topic_info(topic_id)
+        if not topic_info:
+            logger.warning(f"无法获取帖子信息: {topic_id}")
+            return False
+        
+        highest_post_number = topic_info["highest_post_number"]
+        title = topic_info.get("title", "")[:30]
+        logger.info(f"帖子「{title}...」共 {highest_post_number} 楼")
+        
         new_page = await self.context.new_page()
-        start_time = time.time()
         try:
+            # 2. 打开页面（需要获取 CSRF token）
             await new_page.goto(topic_url, wait_until="domcontentloaded")
+            await asyncio.sleep(random.uniform(0.5, 1.0))
             
-            # 获取帖子 ID 用于 timings 接口
-            topic_id = self._extract_topic_id(topic_url)
+            # 3. 直接发送所有楼层的 timings
+            success = await self._send_timings_for_all_posts(new_page, topic_id, highest_post_number)
             
-            # 浏览帖子
-            await self._browse_post(new_page)
+            # 4. 简单滚动模拟浏览（反检测）
+            await self._quick_scroll(new_page)
             
-            # 计算阅读时间并发送 timings
-            elapsed_time = int((time.time() - start_time) * 1000)  # 毫秒
-            if topic_id:
-                await self._send_timings(new_page, topic_id, elapsed_time)
-            
-            # 30% 概率点赞
+            # 5. 30% 概率点赞
             if random.random() < 0.3:
                 await self._click_like(new_page)
             
-            return True
+            return success
         except Exception as e:
             logger.warning(f"浏览帖子失败: {e}")
             return False
@@ -536,6 +595,22 @@ class LinuxDoAdapter(BasePlatformAdapter):
                 await new_page.close()
             except Exception:
                 pass
+
+    async def _quick_scroll(self, page: Page) -> None:
+        """快速滚动页面（模拟浏览行为，反检测用）"""
+        try:
+            # 随机滚动 2-4 次
+            for _ in range(random.randint(2, 4)):
+                scroll_distance = random.randint(500, 1500)
+                await page.evaluate(f"""
+                    window.scrollBy({{
+                        top: {scroll_distance},
+                        behavior: 'smooth'
+                    }})
+                """)
+                await asyncio.sleep(random.uniform(0.3, 0.8))
+        except Exception:
+            pass
     
     def _extract_topic_id(self, url: str) -> Optional[int]:
         """从 URL 提取帖子 ID"""
@@ -549,34 +624,110 @@ class LinuxDoAdapter(BasePlatformAdapter):
             pass
         return None
     
-    async def _send_timings(self, page: Page, topic_id: int, time_ms: int) -> None:
-        """发送阅读时间到 Discourse timings 接口
+    def _get_topic_info(self, topic_id: int) -> Optional[dict]:
+        """通过 API 获取帖子信息（包括总楼层数）
         
-        会自动获取页面上所有楼层的 post_number，并为每个楼层发送阅读时间
+        Returns:
+            dict with keys: highest_post_number, posts_count, title
         """
         try:
-            # 通过浏览器发送 timings 请求，自动携带 cookies 和 CSRF token
-            # 获取所有楼层的 post_number 并构建 timings 参数
+            resp = self.session.get(
+                f"https://linux.do/t/topic/{topic_id}.json",
+                impersonate="chrome136",
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                return {
+                    "highest_post_number": data.get("highest_post_number", 1),
+                    "posts_count": data.get("posts_count", 1),
+                    "title": data.get("title", ""),
+                }
+        except Exception as e:
+            logger.debug(f"获取帖子信息失败: {e}")
+        return None
+
+    async def _send_timings_for_all_posts(self, page: Page, topic_id: int, highest_post_number: int) -> bool:
+        """发送所有楼层的 timings，一次性标记整个帖子为已读
+        
+        核心策略：直接发送所有楼层的 timings，不需要真的滚动浏览
+        每个楼层发送 1500ms 的阅读时间（足够触发已读标记）
+        
+        Args:
+            page: 浏览器页面（用于获取 CSRF token）
+            topic_id: 帖子 ID
+            highest_post_number: 帖子最高楼层号
+            
+        Returns:
+            是否成功发送
+        """
+        try:
+            # 每个楼层 1500ms，总时间 = 楼层数 * 1500
+            time_per_post = 1500
+            total_time = highest_post_number * time_per_post
+            
+            # 构建 timings 参数：为每个楼层发送阅读时间
+            # 格式: timings[1]=1500&timings[2]=1500&...
+            timings_params = "&".join([
+                f"timings%5B{i}%5D={time_per_post}" 
+                for i in range(1, highest_post_number + 1)
+            ])
+            
+            body = f"topic_id={topic_id}&topic_time={total_time}&{timings_params}"
+            
+            # 通过浏览器发送请求（自动携带 cookies 和 CSRF token）
+            result = await page.evaluate(f"""
+                (async () => {{
+                    try {{
+                        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+                        if (!csrfToken) return {{ success: false, error: 'no csrf token' }};
+                        
+                        const resp = await fetch('/topics/timings', {{
+                            method: 'POST',
+                            headers: {{
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                                'X-CSRF-Token': csrfToken,
+                                'X-Requested-With': 'XMLHttpRequest'
+                            }},
+                            body: `{body}`
+                        }});
+                        
+                        return {{ success: resp.ok, status: resp.status }};
+                    }} catch (e) {{
+                        return {{ success: false, error: e.message }};
+                    }}
+                }})();
+            """)
+            
+            if result and result.get("success"):
+                logger.info(f"✓ 已标记 {highest_post_number} 个楼层为已读 (topic_id={topic_id})")
+                return True
+            else:
+                logger.warning(f"发送 timings 失败: {result}")
+                return False
+                
+        except Exception as e:
+            logger.warning(f"发送 timings 异常: {e}")
+            return False
+
+    async def _send_timings(self, page: Page, topic_id: int, time_ms: int) -> None:
+        """发送阅读时间到 Discourse timings 接口（旧方法，保留兼容）"""
+        try:
             await page.evaluate(f"""
                 (async () => {{
                     try {{
                         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
                         if (!csrfToken) return;
                         
-                        // 获取所有楼层的 post_number
                         const posts = document.querySelectorAll('.topic-post');
                         const timingsParams = [];
                         const timePerPost = Math.floor({time_ms} / Math.max(posts.length, 1));
                         
                         posts.forEach((post, index) => {{
-                            // Discourse 的 post_number 从 1 开始
                             const postNumber = index + 1;
-                            // 每个楼层至少 2000ms 的阅读时间
                             const postTime = Math.max(timePerPost, 2000);
                             timingsParams.push(`timings%5B${{postNumber}}%5D=${{postTime}}`);
                         }});
                         
-                        // 如果没有找到楼层，至少发送第一楼的时间
                         if (timingsParams.length === 0) {{
                             timingsParams.push(`timings%5B1%5D={time_ms}`);
                         }}
