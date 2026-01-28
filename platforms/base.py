@@ -11,11 +11,20 @@ Requirements:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from enum import Enum
 from typing import Optional
 
 from loguru import logger
+
+
+# 北京时间时区 (UTC+8)
+BEIJING_TZ = timezone(timedelta(hours=8))
+
+
+def get_beijing_time() -> datetime:
+    """获取北京时间"""
+    return datetime.now(BEIJING_TZ)
 
 
 class CheckinStatus(Enum):
@@ -42,7 +51,7 @@ class CheckinResult:
     status: CheckinStatus
     message: str
     details: Optional[dict] = None
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=get_beijing_time)
     
     def to_dict(self) -> dict:
         """转换为字典格式（用于通知）"""

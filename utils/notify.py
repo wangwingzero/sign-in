@@ -16,7 +16,7 @@ Requirements:
 import os
 import re
 import smtplib
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -25,6 +25,14 @@ from typing import Literal, Optional
 
 import httpx
 from loguru import logger
+
+# 北京时间时区 (UTC+8)
+BEIJING_TZ = timezone(timedelta(hours=8))
+
+
+def get_beijing_time() -> datetime:
+    """获取北京时间"""
+    return datetime.now(BEIJING_TZ)
 
 
 class NotificationManager:
@@ -539,7 +547,7 @@ class NotificationManager:
             tuple: (标题, 内容)
         """
         if timestamp is None:
-            timestamp = datetime.now()
+            timestamp = get_beijing_time()
         
         # 状态图标
         status_icons = {
@@ -593,7 +601,7 @@ class NotificationManager:
             tuple: (标题, 纯文本内容, HTML内容)
         """
         if timestamp is None:
-            timestamp = datetime.now()
+            timestamp = get_beijing_time()
         
         success_count = sum(1 for r in results if r.get("status") == "success")
         failed_count = sum(1 for r in results if r.get("status") == "failed")

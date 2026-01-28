@@ -16,12 +16,21 @@ Requirements:
 import argparse
 import asyncio
 import sys
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from loguru import logger
 
 from platforms.manager import PlatformManager
 from utils.config import AppConfig
+
+
+# 北京时间时区 (UTC+8)
+BEIJING_TZ = timezone(timedelta(hours=8))
+
+
+def get_beijing_time() -> datetime:
+    """获取北京时间"""
+    return datetime.now(BEIJING_TZ)
 
 
 def setup_logging(debug: bool = False) -> None:
@@ -149,7 +158,7 @@ async def run_checkin(args: argparse.Namespace) -> int:
     manager = PlatformManager(config)
     
     # 运行签到
-    logger.info(f"开始签到 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logger.info(f"开始签到 - {get_beijing_time().strftime('%Y-%m-%d %H:%M:%S')}")
     
     if args.platform:
         logger.info(f"仅运行平台: {args.platform}")
