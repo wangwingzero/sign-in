@@ -195,6 +195,7 @@ class LinuxDoAdapter(BasePlatformAdapter):
         self._playwright = await async_playwright().start()
         
         # Patchright 自带反检测，使用 chromium
+        # headless=True 用于 GitHub Actions 等无显示器环境
         self.browser = await self._playwright.chromium.launch(
             headless=True,
             args=[
@@ -283,10 +284,11 @@ class LinuxDoAdapter(BasePlatformAdapter):
     async def login(self) -> bool:
         """执行登录操作 - 纯浏览器表单登录
         
-        策略：完全使用浏览器操作，不依赖 API 请求
-        1. 用 Patchright 浏览器访问页面，通过 Cloudflare 验证
-        2. 直接在页面上填写用户名密码
-        3. 点击登录按钮，等待登录完成
+        策略：
+        1. 用 Patchright 浏览器访问登录页，通过 Cloudflare 验证
+        2. 等待 Discourse SPA 完全加载（关键！）
+        3. 填写表单并点击登录按钮
+        4. 等待登录完成
         """
         # 启动前随机预热延迟（1-5秒），模拟人类打开浏览器的准备时间
         warmup_delay = random.uniform(1.0, 5.0)
@@ -312,92 +314,55 @@ class LinuxDoAdapter(BasePlatformAdapter):
         # Step 3: 模拟人类行为
         await self._simulate_human_behavior()
         
-        # Step 4: 等待登录表单加载
+        # Step 4: 等待登录表单完全加载（Discourse SPA 需要时间）
         logger.info("等待登录表单...")
         try:
-            # Discourse 登录表单的用户名输入框
-            await self.page.wait_for_selector(
-                "#login-account-name", timeout=10000
-            )
+            await self.page.wait_for_selector("#login-account-name", timeout=15000)
+            # 额外等待确保 Ember.js 完全渲染和事件绑定
+            await asyncio.sleep(3)
         except Exception as e:
             logger.error(f"登录表单加载超时: {e}")
             return False
         
-        # Step 5: 填写用户名 - 使用 pressSequentially 模拟真实键盘输入
+        # Step 5: 填写用户名
         logger.info("填写登录信息...")
-        
-        # 使用 locator API（更稳定）
         username_locator = self.page.locator("#login-account-name")
         password_locator = self.page.locator("#login-account-password")
         
-        # 等待输入框可见并可交互
-        await username_locator.wait_for(state="visible", timeout=10000)
-        
-        # 先点击聚焦，触发浏览器的 focus 状态
+        # 点击并输入用户名
         await username_locator.click()
         await asyncio.sleep(random.uniform(0.3, 0.6))
-        
-        # 使用 pressSequentially 模拟真实键盘输入（随机延迟）
-        # Discourse 会检测输入速率，太快会被拦截
-        for char in self.username:
-            await self.page.keyboard.type(char, delay=random.randint(50, 150))
-            # 偶尔停顿一下，模拟思考
-            if random.random() < 0.1:
-                await asyncio.sleep(random.uniform(0.1, 0.3))
-        
+        await username_locator.type(self.username, delay=random.randint(80, 150))
         await asyncio.sleep(random.uniform(0.5, 1.0))
         
-        # Step 6: 填写密码 - 同样使用模拟键盘输入
+        # Step 6: 填写密码
         await password_locator.click()
         await asyncio.sleep(random.uniform(0.3, 0.6))
-        
-        for char in self.password:
-            await self.page.keyboard.type(char, delay=random.randint(50, 150))
-            if random.random() < 0.1:
-                await asyncio.sleep(random.uniform(0.1, 0.3))
-        
+        await password_locator.type(self.password, delay=random.randint(80, 150))
         await asyncio.sleep(random.uniform(0.8, 1.5))
         
-        # Step 7: 按 Enter 键提交（比点击按钮更可靠）
-        # Discourse 的登录按钮可能有 Hydration 延迟，直接按 Enter 更稳定
-        logger.info("提交登录...")
+        # Step 7: 点击登录按钮
+        logger.info("点击登录按钮...")
+        login_button = self.page.locator("#login-button")
         
+        # 等待按钮可点击
+        await login_button.wait_for(state="visible", timeout=5000)
+        await asyncio.sleep(0.5)
+        
+        # 使用真实点击（不是 dispatch_event）
+        await login_button.click()
+        
+        # Step 8: 等待登录结果
+        logger.info("等待登录结果...")
+        
+        # 等待页面变化：要么出现用户头像，要么出现错误信息
         try:
-            async with self.page.expect_response(
-                lambda resp: "/session" in resp.url and resp.request.method == "POST",
+            # 等待用户头像出现（登录成功）或错误信息出现
+            await self.page.wait_for_selector(
+                "#current-user, .alert-error, .login-error, #modal-alert",
                 timeout=30000
-            ) as response_info:
-                # 按 Enter 键提交表单
-                await self.page.keyboard.press("Enter")
-            
-            response = await response_info.value
-            logger.info(f"登录 API 响应: {response.status}")
-            
-            if response.status == 200:
-                try:
-                    resp_json = await response.json()
-                    if resp_json.get("error"):
-                        logger.error(f"登录失败: {resp_json.get('error')}")
-                        return False
-                    logger.info("登录 API 返回成功!")
-                except Exception:
-                    pass
-            elif response.status == 403:
-                logger.error("登录被 Cloudflare 拦截 (403)")
-                return False
-            else:
-                logger.warning(f"登录 API 返回非 200: {response.status}")
-        except Exception as e:
-            logger.warning(f"等待登录响应超时或异常: {e}")
-            # 继续检查页面状态
-        
-        # Step 8: 等待页面更新（用户头像出现）
-        logger.info("等待页面更新...")
-        try:
-            await self.page.wait_for_selector("#current-user", timeout=10000)
-            logger.info("检测到用户头像，登录成功!")
+            )
         except Exception:
-            # 超时后检查页面状态
             pass
         
         await asyncio.sleep(2)
@@ -416,10 +381,6 @@ class LinuxDoAdapter(BasePlatformAdapter):
         if user_ele:
             logger.info("登录成功!")
         else:
-            # 打印当前页面 URL 和部分内容用于调试
-            current_url = self.page.url
-            logger.debug(f"当前页面 URL: {current_url}")
-            
             # 尝试访问首页确认登录状态
             await self.page.goto(HOME_URL, wait_until="domcontentloaded")
             await asyncio.sleep(3)
@@ -427,7 +388,6 @@ class LinuxDoAdapter(BasePlatformAdapter):
             if not user_ele:
                 content = await self.page.content()
                 if "avatar" not in content and "current-user" not in content:
-                    # 打印页面部分内容用于调试
                     logger.debug(f"页面内容片段: {content[:500]}")
                     logger.error("登录验证失败")
                     return False
