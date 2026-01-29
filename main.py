@@ -2,9 +2,9 @@
 """
 多平台签到工具主入口
 
-支持 LinuxDo 和 AnyRouter 平台的自动签到。
+支持 AnyRouter 和 WONG 平台的自动签到。
 
-cron: 0 */6 * * *
+cron: 0 0,12 * * *
 new Env("多平台签到")
 
 Requirements:
@@ -51,13 +51,13 @@ def setup_logging(debug: bool = False) -> None:
 def parse_args() -> argparse.Namespace:
     """解析命令行参数"""
     parser = argparse.ArgumentParser(
-        description="多平台签到工具 - 支持 LinuxDo 和 AnyRouter",
+        description="多平台签到工具 - 支持 AnyRouter 和 WONG",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
   python main.py                    # 运行所有平台签到
-  python main.py --platform linuxdo # 仅运行 LinuxDo 签到
   python main.py --platform anyrouter # 仅运行 AnyRouter 签到
+  python main.py --platform wong    # 仅运行 WONG 签到
   python main.py --dry-run          # 干运行模式（仅显示配置）
   python main.py --debug            # 启用调试日志
         """,
@@ -65,7 +65,7 @@ def parse_args() -> argparse.Namespace:
     
     parser.add_argument(
         "--platform", "-p",
-        choices=["linuxdo", "anyrouter", "wong"],
+        choices=["anyrouter", "wong"],
         help="指定要运行的平台（默认运行所有平台）",
     )
     
@@ -102,15 +102,6 @@ def show_config(config: AppConfig) -> None:
     print("配置信息")
     print("=" * 50)
     
-    # LinuxDo
-    if config.linuxdo_accounts:
-        print(f"\n[LinuxDo] {len(config.linuxdo_accounts)} 个账号")
-        for i, account in enumerate(config.linuxdo_accounts):
-            print(f"  账号 {i + 1}: {account.get_display_name(i)}")
-            print(f"    浏览功能: {'启用' if account.browse_enabled else '禁用'}")
-    else:
-        print(f"\n[LinuxDo] 未配置")
-    
     # AnyRouter
     if config.anyrouter_accounts:
         print(f"\n[AnyRouter] {len(config.anyrouter_accounts)} 个账号")
@@ -119,6 +110,14 @@ def show_config(config: AppConfig) -> None:
             print(f"    Provider: {account.provider}")
     else:
         print(f"\n[AnyRouter] 未配置")
+    
+    # WONG
+    if config.wong_accounts:
+        print(f"\n[WONG] {len(config.wong_accounts)} 个账号")
+        for i, account in enumerate(config.wong_accounts):
+            print(f"  账号 {i + 1}: {account.get_display_name(i)}")
+    else:
+        print(f"\n[WONG] 未配置")
     
     # Providers
     if config.providers:
@@ -145,13 +144,13 @@ async def run_checkin(args: argparse.Namespace) -> int:
         return 0
     
     # 检查是否有配置
-    has_linuxdo = len(config.linuxdo_accounts) > 0
     has_anyrouter = len(config.anyrouter_accounts) > 0
+    has_wong = len(config.wong_accounts) > 0
     
-    if not has_linuxdo and not has_anyrouter:
+    if not has_anyrouter and not has_wong:
         logger.error("未配置任何平台，请设置环境变量")
-        logger.info("LinuxDo: LINUXDO_ACCOUNTS (JSON) 或 LINUXDO_USERNAME + LINUXDO_PASSWORD")
         logger.info("AnyRouter: ANYROUTER_ACCOUNTS")
+        logger.info("WONG: WONG_ACCOUNTS")
         return 1
     
     # 创建平台管理器

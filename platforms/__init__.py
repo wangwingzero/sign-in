@@ -5,7 +5,6 @@
 """
 
 from platforms.base import BasePlatformAdapter, CheckinResult, CheckinStatus
-from platforms.linuxdo import LinuxDoAdapter
 from platforms.anyrouter import AnyRouterAdapter
 from platforms.manager import PlatformManager
 
@@ -13,7 +12,6 @@ __all__ = [
     "BasePlatformAdapter",
     "CheckinResult",
     "CheckinStatus",
-    "LinuxDoAdapter",
     "AnyRouterAdapter",
     "PlatformManager",
 ]

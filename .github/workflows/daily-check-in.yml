@@ -2,7 +2,7 @@ name: Multi-Platform Daily Check-in
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # 每6小时执行一次
+    - cron: '0 0,12 * * *'  # 每天 2 次（UTC 0点和12点，即北京时间 8点和20点）
 
   workflow_dispatch:
     inputs:
@@ -12,7 +12,6 @@ on:
         type: choice
         options:
           - ''
-          - linuxdo
           - anyrouter
           - wong
 
@@ -24,11 +23,6 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      
-      # 安装 Chrome (Patchright 会自动管理浏览器)
-      # - uses: browser-actions/setup-chrome@v1
-      # - name: Check Chrome version
-      #   run: chrome --version
       
       # 安装 uv
       - name: Install uv
@@ -44,21 +38,9 @@ jobs:
       - name: Install dependencies
         run: uv sync
       
-      # 安装 Patchright 浏览器 (反检测 Playwright)
-      - name: Install Patchright browsers
-        run: uv run patchright install chromium
-      
       # 执行签到
       - name: Execute multi-platform check-in
         env:
-          # LinuxDo 配置
-          LINUXDO_ACCOUNTS: ${{ secrets.LINUXDO_ACCOUNTS }}
-          USERNAME: ${{ secrets.USERNAME }}
-          PASSWORD: ${{ secrets.PASSWORD }}
-          LINUXDO_USERNAME: ${{ secrets.LINUXDO_USERNAME }}
-          LINUXDO_PASSWORD: ${{ secrets.LINUXDO_PASSWORD }}
-          BROWSE_ENABLED: ${{ secrets.BROWSE_ENABLED }}
-          
           # AnyRouter 配置
           ANYROUTER_ACCOUNTS: ${{ secrets.ANYROUTER_ACCOUNTS }}
           PROVIDERS: ${{ secrets.PROVIDERS }}

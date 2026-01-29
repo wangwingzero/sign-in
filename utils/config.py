@@ -5,11 +5,8 @@
 统一管理所有平台的账号和设置配置。
 
 Requirements:
-- 1.3: 保持与现有 LinuxDo 环境变量的向后兼容
-- 1.4: 支持单账号 (LinuxDo) 和多账号 (AnyRouter) 配置
 - 3.1: 从环境变量加载配置
 - 3.2: 支持 JSON 格式的多账号配置 (ANYROUTER_ACCOUNTS)
-- 3.3: 支持简单键值格式的单账号配置 (LINUXDO_USERNAME, LINUXDO_PASSWORD)
 - 3.4: 验证必填字段并报告清晰的错误消息
 - 3.5: 支持通过 PROVIDERS 环境变量自定义 provider 配置
 - 3.6: 缺少必需配置时记录描述性错误并跳过该平台
@@ -21,60 +18,6 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional
 
 from loguru import logger
-
-
-@dataclass
-class LinuxDoAccount:
-    """LinuxDo 账号配置
-    
-    level 字段说明：
-    - 1: 激进模式（1级号），刷帖速度快，适合新号快速升级
-    - 2: 中等模式（2级号），平衡速度和安全
-    - 3: 保守模式（3级号），慢速浏览，适合高等级号保号
-    """
-    
-    username: str
-    password: str
-    browse_enabled: bool = True
-    browse_duration: int = 120  # 浏览时长（秒），默认 2 分钟
-    level: int = 2  # 账号等级，1=激进，2=中等，3=保守
-    name: Optional[str] = None
-    
-    @classmethod
-    def from_dict(cls, data: dict, index: int) -> "LinuxDoAccount":
-        """从字典创建 LinuxDoAccount"""
-        browse_enabled = data.get("browse_enabled", True)
-        if isinstance(browse_enabled, str):
-            browse_enabled = browse_enabled.lower() not in ["false", "0", "off", "no"]
-        
-        # 浏览时长，默认 120 秒
-        browse_duration = data.get("browse_duration", 120)
-        if isinstance(browse_duration, str):
-            browse_duration = int(browse_duration)
-        
-        # 账号等级，默认 2（中等）
-        level = data.get("level", 2)
-        if isinstance(level, str):
-            level = int(level)
-        level = max(1, min(3, level))  # 限制在 1-3 范围内
-        
-        name = data.get("name") or f"Account {index + 1}"
-        return cls(
-            username=data["username"],
-            password=data["password"],
-            browse_enabled=browse_enabled,
-            browse_duration=browse_duration,
-            level=level,
-            name=name,
-        )
-    
-    def get_display_name(self, index: int) -> str:
-        return self.name if self.name else self.username
-
-
-# 向后兼容别名
-LinuxDoConfig = LinuxDoAccount
-
 
 
 @dataclass
@@ -201,105 +144,28 @@ class ProviderConfig:
 class AppConfig:
     """应用配置 - 统一管理所有平台配置"""
 
-    linuxdo_accounts: List[LinuxDoAccount] = field(default_factory=list)
     anyrouter_accounts: List[AnyRouterAccount] = field(default_factory=list)
     wong_accounts: List[WongAccount] = field(default_factory=list)
     providers: Dict[str, ProviderConfig] = field(default_factory=dict)
 
-    # 向后兼容属性
-    @property
-    def linuxdo(self) -> Optional[LinuxDoAccount]:
-        """向后兼容：返回第一个 LinuxDo 账号"""
-        return self.linuxdo_accounts[0] if self.linuxdo_accounts else None
-
     @classmethod
     def load_from_env(cls) -> "AppConfig":
         """从环境变量加载完整配置"""
-        linuxdo_accounts = cls._load_linuxdo_accounts()
-        wong_accounts = cls._load_wong_accounts(linuxdo_accounts)
+        wong_accounts = cls._load_wong_accounts()
         anyrouter_accounts = cls._load_anyrouter_accounts()
         providers = cls._load_providers()
         return cls(
-            linuxdo_accounts=linuxdo_accounts,
             anyrouter_accounts=anyrouter_accounts,
             wong_accounts=wong_accounts,
             providers=providers,
         )
     
     @classmethod
-    def _load_linuxdo_accounts(cls) -> List[LinuxDoAccount]:
-        """从环境变量加载 LinuxDo 账号配置
-        
-        支持两种格式：
-        1. JSON 数组格式 (LINUXDO_ACCOUNTS): 多账号
-        2. 单独环境变量格式 (LINUXDO_USERNAME/PASSWORD): 单账号，向后兼容
-        """
+    def _load_wong_accounts(cls) -> List[WongAccount]:
+        """从环境变量加载 WONG 公益站账号配置"""
         accounts = []
         
-        # 优先尝试 JSON 格式
-        accounts_str = os.getenv("LINUXDO_ACCOUNTS")
-        if accounts_str:
-            try:
-                accounts_data = json.loads(accounts_str)
-                
-                if not isinstance(accounts_data, list):
-                    logger.error("LINUXDO_ACCOUNTS 配置格式错误: 必须是 JSON 数组格式")
-                else:
-                    for i, account_dict in enumerate(accounts_data):
-                        if not isinstance(account_dict, dict):
-                            logger.error(f"LinuxDo 账号 {i + 1} 配置格式错误: 必须是 JSON 对象")
-                            continue
-                        
-                        if "username" not in account_dict or "password" not in account_dict:
-                            logger.error(f"LinuxDo 账号 {i + 1} 缺少必填字段: 需要 'username' 和 'password'")
-                            continue
-                        
-                        accounts.append(LinuxDoAccount.from_dict(account_dict, i))
-                    
-                    if accounts:
-                        logger.info(f"成功加载 {len(accounts)} 个 LinuxDo 账号配置 (JSON 格式)")
-                        # 显示每个账号的 level 配置，方便调试
-                        for acc in accounts:
-                            logger.debug(f"  - {acc.name}: level={acc.level}")
-                        return accounts
-            except json.JSONDecodeError as e:
-                logger.error(f"LINUXDO_ACCOUNTS JSON 解析失败: {e}")
-            except Exception as e:
-                logger.error(f"加载 LINUXDO_ACCOUNTS 时发生错误: {e}")
-        
-        # 回退到单账号格式（向后兼容）
-        username = os.getenv("LINUXDO_USERNAME") or os.getenv("USERNAME")
-        password = os.getenv("LINUXDO_PASSWORD") or os.getenv("PASSWORD")
-        
-        if username and password:
-            browse_str = os.getenv("BROWSE_ENABLED", "true").lower()
-            browse_enabled = browse_str not in ["false", "0", "off", "no"]
-            
-            accounts.append(LinuxDoAccount(
-                username=username,
-                password=password,
-                browse_enabled=browse_enabled,
-            ))
-            logger.info("成功加载 1 个 LinuxDo 账号配置 (环境变量格式)")
-        elif username or password:
-            logger.warning("LinuxDo 配置不完整: 需要同时提供用户名和密码")
-        
-        return accounts
-    
-    @classmethod
-    def _load_wong_accounts(cls, linuxdo_accounts: List[LinuxDoAccount]) -> List[WongAccount]:
-        """从环境变量加载 WONG 公益站账号配置
-        
-        支持两种配置方式：
-        1. WONG_ACCOUNTS 环境变量（JSON 数组）
-        2. 自动使用 LinuxDO 账号（如果配置了 WONG_ENABLED=true）
-        
-        Args:
-            linuxdo_accounts: LinuxDO 账号列表（用于自动关联）
-        """
-        accounts = []
-        
-        # 方式1: 从 WONG_ACCOUNTS 环境变量加载
+        # 从 WONG_ACCOUNTS 环境变量加载
         accounts_str = os.getenv("WONG_ACCOUNTS")
         if accounts_str:
             try:
@@ -322,17 +188,6 @@ class AppConfig:
                 logger.error(f"WONG_ACCOUNTS JSON 解析失败: {e}")
             except Exception as e:
                 logger.error(f"加载 WONG_ACCOUNTS 时发生错误: {e}")
-        
-        # 方式2: 自动使用 LinuxDO 账号
-        wong_enabled = os.getenv("WONG_ENABLED", "").lower() in ["true", "1", "yes", "on"]
-        if wong_enabled and linuxdo_accounts:
-            for i, linuxdo_acc in enumerate(linuxdo_accounts):
-                accounts.append(WongAccount(
-                    linuxdo_username=linuxdo_acc.username,
-                    linuxdo_password=linuxdo_acc.password,
-                    name=f"WONG ({linuxdo_acc.get_display_name(i)})",
-                ))
-            logger.info(f"自动关联 {len(accounts)} 个 LinuxDO 账号到 WONG 公益站")
         
         return accounts
     
@@ -396,7 +251,7 @@ class AppConfig:
                 sign_in_path="/api/user/checkin",
                 user_info_path="/api/user/self",
                 api_user_key="new-api-user",
-                bypass_method=None,  # 不需要 WAF bypass
+                bypass_method=None,
                 waf_cookie_names=None,
             ),
         }
@@ -429,7 +284,7 @@ class AppConfig:
         return self.providers.get(name)
     
     def has_any_config(self) -> bool:
-        return len(self.linuxdo_accounts) > 0 or len(self.anyrouter_accounts) > 0
+        return len(self.anyrouter_accounts) > 0 or len(self.wong_accounts) > 0
 
 
 # Backward compatibility alias

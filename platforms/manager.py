@@ -10,15 +10,12 @@ Requirements:
 - 6.4: 发送汇总通知
 """
 
-import asyncio
-import random
 from typing import Optional
 
 from loguru import logger
 
 from platforms.anyrouter import AnyRouterAdapter
 from platforms.base import CheckinResult, CheckinStatus
-from platforms.linuxdo import LinuxDoAdapter
 from platforms.wong import WongAdapter
 from utils.config import AppConfig
 from utils.notify import NotificationManager
@@ -48,10 +45,6 @@ class PlatformManager:
         """
         self.results = []
         
-        # LinuxDo (多账号)
-        linuxdo_results = await self._run_all_linuxdo()
-        self.results.extend(linuxdo_results)
-        
         # WONG 公益站 (仅 WONG_ACCOUNTS 配置的)
         wong_results = await self._run_wong_accounts_only()
         self.results.extend(wong_results)
@@ -66,7 +59,7 @@ class PlatformManager:
         """运行指定平台签到
         
         Args:
-            platform: 平台名称 ("linuxdo", "wong" 或 "anyrouter")
+            platform: 平台名称 ("wong" 或 "anyrouter")
         
         Returns:
             list[CheckinResult]: 签到结果
@@ -78,10 +71,7 @@ class PlatformManager:
         
         platform_lower = platform.lower()
         
-        if platform_lower == "linuxdo":
-            linuxdo_results = await self._run_all_linuxdo()
-            self.results.extend(linuxdo_results)
-        elif platform_lower == "wong":
+        if platform_lower == "wong":
             wong_results = await self._run_all_wong()
             self.results.extend(wong_results)
         elif platform_lower == "anyrouter":
@@ -91,77 +81,6 @@ class PlatformManager:
             raise ValueError(f"未知平台: {platform}")
         
         return self.results
-    
-    async def _run_all_linuxdo(self) -> list[CheckinResult]:
-        """运行所有 LinuxDo 账号签到（串行执行，避免被检测为多账号关联）
-
-        反检测策略：
-        - 串行执行而非并发，避免同一时间多账号活动被关联
-        - 账号执行顺序随机化，避免固定模式
-        - 账号间添加随机间隔（10-30秒），模拟不同用户
-        - 浏览时长根据账号等级调整：1级~80分钟，2级~40分钟，3级~20分钟
-        """
-        if not self.config.linuxdo_accounts:
-            logger.warning("LinuxDo 未配置")
-            return []
-
-        # 随机打乱账号执行顺序
-        accounts_with_index = list(enumerate(self.config.linuxdo_accounts))
-        random.shuffle(accounts_with_index)
-        logger.info(f"账号执行顺序已随机化")
-
-        results = []
-        total_accounts = len(accounts_with_index)
-
-        for order, (original_index, account) in enumerate(accounts_with_index):
-            logger.info(f"开始执行 LinuxDo 账号 {order + 1}/{total_accounts}: {account.get_display_name(original_index)}")
-
-            # 根据账号等级获取浏览时长配置
-            level_config = LinuxDoAdapter.LEVEL_CONFIGS.get(account.level, LinuxDoAdapter.LEVEL_CONFIGS[2])
-            randomized_duration = random.randint(level_config["duration_min"], level_config["duration_max"])
-            level_names = {1: "激进", 2: "中等", 3: "保守"}
-            logger.info(f"本次浏览目标时长: {randomized_duration // 60} 分 {randomized_duration % 60} 秒，等级: {account.level}({level_names.get(account.level, '未知')})")
-
-            adapter = LinuxDoAdapter(
-                username=account.username,
-                password=account.password,
-                browse_enabled=account.browse_enabled,
-                browse_duration=randomized_duration,
-                level=account.level,
-                account_name=account.get_display_name(original_index),
-            )
-
-            try:
-                result = await adapter.run()
-                results.append(result)
-            except Exception as e:
-                logger.error(f"LinuxDo 账号 {order + 1} 执行异常: {e}")
-                results.append(CheckinResult(
-                    platform="LinuxDo",
-                    account=account.get_display_name(original_index),
-                    status=CheckinStatus.FAILED,
-                    message=f"执行异常: {str(e)}",
-                ))
-
-            # 账号间随机间隔（最后一个账号不需要等待）
-            if order < total_accounts - 1:
-                delay = random.uniform(10, 30)
-                logger.info(f"等待 {delay:.1f} 秒后执行下一个账号...")
-                await asyncio.sleep(delay)
-
-        return results
-    
-    async def _run_linuxdo(self) -> CheckinResult:
-        """运行 LinuxDo 签到（向后兼容，运行第一个账号）"""
-        results = await self._run_all_linuxdo()
-        if results:
-            return results[0]
-        return CheckinResult(
-            platform="LinuxDo",
-            account="N/A",
-            status=CheckinStatus.SKIPPED,
-            message="未配置 LinuxDo 账号",
-        )
     
     async def _run_wong_accounts_only(self) -> list[CheckinResult]:
         """运行 WONG_ACCOUNTS 环境变量配置的账号（不包括 ANYROUTER_ACCOUNTS 里的）"""
