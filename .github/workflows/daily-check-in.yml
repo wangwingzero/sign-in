@@ -38,6 +38,10 @@ jobs:
       - name: Install dependencies
         run: uv sync
       
+      # 安装 Patchright 浏览器 (用于 WAF bypass)
+      - name: Install Patchright browsers
+        run: uv run patchright install chromium
+      
       # 执行签到
       - name: Execute multi-platform check-in
         env:
