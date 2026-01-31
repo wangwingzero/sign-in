@@ -78,10 +78,13 @@ class BrowserManager:
         logger.info(f"启动 nodriver 浏览器 (headless={self.headless})")
 
         # nodriver 配置
-        # 注意：nodriver 的 headless 模式容易被检测，建议配合 Xvfb 使用有头模式
+        # GitHub Actions 以 root 运行，必须设置 sandbox=False
         browser_args = [
-            "--no-sandbox",
             "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--no-first-run",
+            "--no-service-autorun",
+            "--password-store=basic",
         ]
 
         # 在 GitHub Actions 上使用 Xvfb 时，不要设置 headless
@@ -89,6 +92,7 @@ class BrowserManager:
 
         self._nodriver_browser = await uc.start(
             headless=use_headless,
+            sandbox=False,  # GitHub Actions 以 root 运行必须设置
             browser_args=browser_args,
             user_data_dir=self.user_data_dir,
         )
