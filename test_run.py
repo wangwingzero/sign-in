@@ -4,8 +4,14 @@
 当遇到 Cloudflare Turnstile 验证时，等待用户手动完成验证。
 """
 import asyncio
+import contextlib
 import os
 import sys
+
+from loguru import logger
+
+from utils.browser import BrowserManager, get_browser_engine
+from utils.config import AppConfig
 
 # 设置环境变量 - 测试所有公益站
 os.environ["LINUXDO_ACCOUNTS"] = '''[
@@ -15,13 +21,8 @@ os.environ["LINUXDO_ACCOUNTS"] = '''[
 # 强制使用非 headless 模式进行调试
 os.environ["BROWSER_HEADLESS"] = "false"
 
-from loguru import logger
-
 logger.remove()
 logger.add(sys.stderr, format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>", level="DEBUG")
-
-from utils.browser import BrowserManager, get_browser_engine
-from utils.config import AppConfig
 
 # 测试配置加载
 print("=" * 60)
@@ -240,10 +241,8 @@ async def checkin_site_simple(browser_manager: BrowserManager, site_config: dict
         pass
 
     if not linuxdo_btn:
-        try:
+        with contextlib.suppress(Exception):
             linuxdo_btn = await tab.find("LinuxDO", timeout=3)
-        except Exception:
-            pass
 
     if not linuxdo_btn:
         return {"status": "failed", "message": "未找到 LinuxDO 按钮"}
@@ -279,15 +278,11 @@ async def checkin_site_simple(browser_manager: BrowserManager, site_config: dict
             await asyncio.sleep(2)
 
             authorize_btn = None
-            try:
+            with contextlib.suppress(Exception):
                 authorize_btn = await tab.find("允许", timeout=5)
-            except Exception:
-                pass
             if not authorize_btn:
-                try:
+                with contextlib.suppress(Exception):
                     authorize_btn = await tab.find("Allow", timeout=3)
-                except Exception:
-                    pass
 
             if authorize_btn:
                 logger.info(f"[{site_name}] 点击授权按钮...")
