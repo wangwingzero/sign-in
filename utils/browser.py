@@ -598,8 +598,21 @@ class BrowserManager:
 
     async def start(self):
         """启动浏览器"""
+        is_ci = bool(os.environ.get("CI")) or bool(os.environ.get("GITHUB_ACTIONS"))
+
         if self.engine == "nodriver":
-            await self._start_nodriver()
+            if is_ci:
+                # CI 环境中 nodriver 连接不稳定，尝试启动，失败则回退到 patchright
+                try:
+                    await self._start_nodriver()
+                except BrowserStartupError as e:
+                    logger.warning(
+                        f"nodriver 在 CI 环境启动失败，自动回退到 patchright: {e.message}"
+                    )
+                    self.engine = "patchright"
+                    await self._start_patchright()
+            else:
+                await self._start_nodriver()
         elif self.engine == "drissionpage":
             await self._start_drissionpage()
         elif self.engine == "camoufox":
