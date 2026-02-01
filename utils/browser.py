@@ -678,12 +678,13 @@ class BrowserManager:
         # 尝试启动浏览器，捕获并提供有用的错误信息
         # 使用 Config 对象进行配置，确保 sandbox 设置生效
         try:
-            config = uc.Config()
-            config.headless = use_headless
-            config.sandbox = use_sandbox
-            config.browser_args = browser_args
-            if self.user_data_dir:
-                config.user_data_dir = self.user_data_dir
+            # 在初始化时传入 browser_args（Config.browser_args 是只读属性）
+            config = uc.Config(
+                headless=use_headless,
+                sandbox=use_sandbox,
+                browser_args=browser_args,
+                user_data_dir=self.user_data_dir,
+            )
 
             logger.info(
                 f"nodriver 配置: headless={config.headless}, "
