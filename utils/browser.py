@@ -678,17 +678,38 @@ class BrowserManager:
         # 尝试启动浏览器，捕获并提供有用的错误信息
         # 使用 Config 对象进行配置，确保 sandbox 设置生效
         try:
+            # 在 CI 环境中显式指定 Chrome 路径，避免使用系统自带的不完整 chromium
+            browser_executable = None
+            if is_ci:
+                import shutil
+                # 优先使用 google-chrome-stable（workflow 安装的）
+                for chrome_path in [
+                    "google-chrome-stable",
+                    "google-chrome",
+                    "/usr/bin/google-chrome-stable",
+                    "/usr/bin/google-chrome",
+                ]:
+                    found = shutil.which(chrome_path) if not chrome_path.startswith("/") else (
+                        chrome_path if os.path.exists(chrome_path) else None
+                    )
+                    if found:
+                        browser_executable = found
+                        logger.info(f"使用 Chrome 路径: {browser_executable}")
+                        break
+
             # 在初始化时传入 browser_args（Config.browser_args 是只读属性）
             config = uc.Config(
                 headless=use_headless,
                 sandbox=use_sandbox,
                 browser_args=browser_args,
+                browser_executable_path=browser_executable,
                 user_data_dir=self.user_data_dir,
             )
 
             logger.info(
                 f"nodriver 配置: headless={config.headless}, "
-                f"sandbox={config.sandbox}, args={len(browser_args)}"
+                f"sandbox={config.sandbox}, args={len(browser_args)}, "
+                f"executable={config.browser_executable_path}"
             )
 
             self._nodriver_browser = await uc.start(config=config)
