@@ -39,6 +39,8 @@ dependencies = [
     "rookiepy>=0.5.0",
     "drissionpage>=4.1.1.2",
     "nodriver>=0.48.1",
+    "leveldb-py>=0.0.1b0",
+    "pillow>=12.1.0",
 ]
 
 [project.optional-dependencies]

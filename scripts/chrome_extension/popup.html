@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>NewAPI 配置提取器</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 450px;
+      min-height: 400px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      padding: 16px;
+    }
+    h1 {
+      font-size: 18px;
+      margin-bottom: 12px;
+      color: #00d9ff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 12px;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
+    .btn-secondary {
+      background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+      color: white;
+      margin-bottom: 12px;
+    }
+    .btn-secondary:hover { transform: translateY(-2px); }
+    .btn-success {
+      background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+      color: white;
+    }
+    .btn-success:hover { transform: translateY(-2px); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .btn-small { 
+      flex: 1; 
+      padding: 8px; 
+      font-size: 12px; 
+      background: #2d3748; 
+    }
+    .btn-small:hover { background: #4a5568; }
+    .btn-danger { background: #c53030 !important; }
+    .btn-danger:hover { background: #e53e3e !important; }
+    
+    .import-box {
+      background: #16213e;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 12px;
+    }
+    .import-box textarea {
+      width: 100%;
+      height: 80px;
+      background: #0d0d1a;
+      border: 1px solid #2a2a4a;
+      border-radius: 4px;
+      color: #eee;
+      font-family: 'Consolas', monospace;
+      font-size: 11px;
+      padding: 8px;
+      resize: vertical;
+      margin-bottom: 8px;
+    }
+    .import-box .btn-primary { width: 100%; }
+    
+    .sites-section {
+      background: #16213e;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 12px;
+    }
+    .sites-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 13px;
+      color: #aaa;
+    }
+    .sites-actions { display: flex; gap: 8px; }
+    .btn-link {
+      background: none;
+      border: none;
+      color: #00d9ff;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 2px 6px;
+    }
+    .btn-link:hover { text-decoration: underline; }
+    .sites-list {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+    .site-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      background: #1a1a2e;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .site-checkbox:hover { background: #2a2a4a; }
+    .site-checkbox input { cursor: pointer; }
+    
+    .status {
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+    .status.info { background: #16213e; border-left: 3px solid #00d9ff; }
+    .status.success { background: #1a3a2a; border-left: 3px solid #38ef7d; }
+    .status.error { background: #3a1a1a; border-left: 3px solid #ff6b6b; }
+    
+    .results {
+      background: #16213e;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .result-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #2a2a4a;
+    }
+    .result-item:last-child { border-bottom: none; }
+    .result-item .name { font-weight: 600; color: #00d9ff; }
+    .result-item .name.site-link { 
+      cursor: pointer; 
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .result-item .name.site-link:hover { 
+      color: #fff; 
+      text-decoration: underline;
+    }
+    .result-item .status-icon { font-size: 16px; }
+    
+    .output {
+      background: #0d0d1a;
+      border: 1px solid #2a2a4a;
+      border-radius: 6px;
+      padding: 10px;
+      font-family: 'Consolas', monospace;
+      font-size: 11px;
+      max-height: 150px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      color: #666;
+      margin-top: 12px;
+    }
+    
+    /* 模态框样式 */
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-content {
+      background: #1a1a2e;
+      border-radius: 12px;
+      width: 90%;
+      max-height: 80%;
+      overflow: hidden;
+      border: 1px solid #2a2a4a;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: #16213e;
+      border-bottom: 1px solid #2a2a4a;
+    }
+    .modal-header h3 {
+      font-size: 14px;
+      color: #00d9ff;
+    }
+    .btn-close {
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 0 4px;
+    }
+    .btn-close:hover { color: #fff; }
+    .modal-body {
+      padding: 16px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .manage-sites-list {
+      margin-bottom: 12px;
+    }
+    .manage-site-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px;
+      background: #16213e;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+    .manage-site-info {
+      flex: 1;
+    }
+    .manage-site-name {
+      font-weight: 600;
+      color: #eee;
+      font-size: 13px;
+    }
+    .manage-site-domain {
+      font-size: 11px;
+      color: #888;
+      margin-top: 2px;
+    }
+    .manage-site-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .btn-icon {
+      background: #2d3748;
+      border: none;
+      color: #aaa;
+      padding: 6px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .btn-icon:hover { background: #4a5568; color: #fff; }
+    .btn-icon.delete:hover { background: #c53030; }
+    .btn-add {
+      width: 100%;
+      background: #2d3748 !important;
+    }
+    .form-group {
+      margin-bottom: 12px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      color: #aaa;
+      margin-bottom: 4px;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 8px 10px;
+      background: #0d0d1a;
+      border: 1px solid #2a2a4a;
+      border-radius: 6px;
+      color: #eee;
+      font-size: 13px;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: #00d9ff;
+    }
+    .form-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 16px;
+    }
+    .form-actions .btn-small {
+      flex: none;
+      width: auto;
+      padding: 8px 16px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔑 NewAPI 配置提取器</h1>
+  
+  <div id="statusBox" class="status info">
+    点击下方按钮开始提取已登录站点的签到配置
+  </div>
+  
+  <div class="sites-section">
+    <div class="sites-header">
+      <span>选择站点</span>
+      <div class="sites-actions">
+        <button id="selectAllBtn" class="btn-link">全选</button>
+        <button id="selectNoneBtn" class="btn-link">全不选</button>
+        <button id="manageSitesBtn" class="btn-link">⚙️ 管理</button>
+      </div>
+    </div>
+    <div id="sitesList" class="sites-list"></div>
+  </div>
+  
+  <!-- 站点管理弹窗 -->
+  <div id="siteModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalTitle">站点管理</h3>
+        <button id="closeModalBtn" class="btn-close">×</button>
+      </div>
+      <div id="modalBody" class="modal-body">
+        <!-- 站点列表视图 -->
+        <div id="sitesListView">
+          <div id="manageSitesList" class="manage-sites-list"></div>
+          <button id="addSiteBtn" class="btn btn-small btn-add">➕ 添加新站点</button>
+        </div>
+        <!-- 添加/编辑站点表单 -->
+        <div id="siteFormView" style="display: none;">
+          <div class="form-group">
+            <label>站点名称</label>
+            <input type="text" id="siteName" placeholder="如：我的API站">
+          </div>
+          <div class="form-group">
+            <label>Provider ID</label>
+            <input type="text" id="siteProvider" placeholder="如：myapi（唯一标识）">
+          </div>
+          <div class="form-group">
+            <label>域名</label>
+            <input type="text" id="siteDomain" placeholder="如：api.example.com">
+          </div>
+          <div class="form-group">
+            <label>完整 URL</label>
+            <input type="text" id="siteUrl" placeholder="如：https://api.example.com">
+          </div>
+          <div class="form-actions">
+            <button id="cancelFormBtn" class="btn btn-small">取消</button>
+            <button id="saveFormBtn" class="btn btn-small btn-primary">保存</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <button id="extractBtn" class="btn btn-primary">📦 提取签到配置</button>
+  <button id="openAllBtn" class="btn btn-secondary">🌐 一键打开所有站点</button>
+  
+  <div id="resultsBox" class="results" style="display: none;">
+    <div id="resultsList"></div>
+  </div>
+  
+  <button id="copyBtn" class="btn btn-success" style="display: none;">📋 复制 JSON 到剪贴板</button>
+  
+  <div class="btn-row">
+    <button id="viewSavedBtn" class="btn btn-small">📂 查看已保存</button>
+    <button id="importBtn" class="btn btn-small">📥 导入配置</button>
+    <button id="mergeToolBtn" class="btn btn-small">� 合并工具</button>
+    <button id="clearBtn" class="btn btn-small btn-danger">🗑️ 清空</button>
+  </div>
+  
+  <div id="importBox" class="import-box" style="display: none;">
+    <textarea id="importText" placeholder="粘贴 JSON 配置到这里..."></textarea>
+    <button id="doImportBtn" class="btn btn-small btn-primary">确认导入</button>
+  </div>
+  
+  <div id="outputBox" class="output" style="display: none;"></div>
+  
+  <div class="footer">
+    提取的配置可直接用于 GitHub Secrets
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

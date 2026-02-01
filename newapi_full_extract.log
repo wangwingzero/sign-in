@@ -1,0 +1,4 @@
+[2026-02-01 17:44:10] rookiepy 获取 cookies 失败: Chrome cookies from version v130 can be decrypted only when running as admin due to appbound encryption!
+
+Location:
+    rookie-rs\src\browser\chromium.rs:52:9

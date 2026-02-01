@@ -1,0 +1,17 @@
+{
+   "risk_detected": {
+      "message": "发现风险"
+   },
+   "risk_tips": {
+      "message": "风险"
+   },
+   "risk_website": {
+      "message": "风险网站"
+   },
+   "safe": {
+      "message": "安全"
+   },
+   "safe_tips": {
+      "message": "安全"
+   }
+}

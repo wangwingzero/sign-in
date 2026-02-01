@@ -1,0 +1,39 @@
+{
+   "action": {
+      "default_icon": {
+         "16": "assets/images/honor_SafeInternet_16.png",
+         "19": "assets/images/honor_SafeInternet_19.png",
+         "32": "assets/images/honor_SafeInternet_32.png",
+         "38": "assets/images/honor_SafeInternet_38.png"
+      }
+   },
+   "background": {
+      "service_worker": "qax-security/background.js"
+   },
+   "content_scripts": [ {
+      "all_frames": true,
+      "js": [ "qax-security/blockui.js" ],
+      "match_about_blank": true,
+      "matches": [ "http://*/*", "https://*/*" ],
+      "run_at": "document_start"
+   } ],
+   "default_locale": "zh_CN",
+   "description": "拦截恶意网址，净化上网环境",
+   "host_permissions": [ "http://*/*", "https://*/*" ],
+   "icons": {
+      "128": "assets/images/honor_SafeInternet_128.png",
+      "256": "assets/images/honor_SafeInternet_256.png",
+      "48": "assets/images/honor_SafeInternet_48.png",
+      "512": "assets/images/honor_SafeInternet_512.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAo7VJZpaeU15JUYsUbftmWzvHeh+MY2bG6uCkxugEAenu+T4XCpC3S5WIUmO9ONaCnYsSLjoyeqaXPveuwlYntmfaPKWkRTWXEkk50so4IM3VDMTDDMyAx1b7Ss/2fkFW/DdyKIySpNxqaB3OaRrYDRnMCkO+X+36l425G/3ODThPD/8yyT8J9b309eUSzQwJywvLVoGeEHkCrRj3LHQaLHDkjM5qmzuU/CxZ33pOH5WVf8O2cwhIiialgTBXcnVKM7n/vx/q8XJEQ7B9dySJR5G4LomwNq4i0lEMU84WFEPYLEb7sbiZIBW+XuK23l5evic6lBrPj3BS518L+YFP+QIDAQAB",
+   "manifest_version": 3,
+   "name": "荣耀安全上网插件",
+   "permissions": [ "nativeMessaging" ],
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "1.0.10",
+   "web_accessible_resources": [ {
+      "matches": [ "\u003Call_urls>" ],
+      "resources": [ "*" ]
+   } ]
+}

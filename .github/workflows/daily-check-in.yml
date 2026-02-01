@@ -13,8 +13,7 @@ on:
         options:
           - ''
           - linuxdo
-          - anyrouter
-          - wong
+          - newapi
 
 jobs:
   checkin:
@@ -59,9 +58,13 @@ jobs:
           BROWSER_ENGINE: nodriver
           DISPLAY: ":99"
           
-          # AnyRouter 配置
+          # NewAPI 站点统一配置（支持所有 NewAPI 架构的站点）
+          # JSON 格式: [{"name": "账号名", "provider": "站点ID", "cookies": {"session": "xxx"}, "api_user": "123"}]
+          # 支持的 provider: anyrouter, wong, elysiver, kfcapi, duckcoding, runanytime, neb, zeroliya, mitchll 等
+          NEWAPI_ACCOUNTS: ${{ secrets.NEWAPI_ACCOUNTS }}
+          
+          # 兼容旧配置（如果设置了 ANYROUTER_ACCOUNTS 也会被读取）
           ANYROUTER_ACCOUNTS: ${{ secrets.ANYROUTER_ACCOUNTS }}
-          PROVIDERS: ${{ secrets.PROVIDERS }}
           
           # WONG 公益站配置
           WONG_ACCOUNTS: ${{ secrets.WONG_ACCOUNTS }}

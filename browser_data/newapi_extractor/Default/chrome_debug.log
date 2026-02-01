@@ -1,0 +1,12 @@
+[0201/172030.555:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: 拒绝访问。 (0x5)
+[0201/172030.555:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: 拒绝访问。 (0x5)
+[0201/172030.555:ERROR:net\disk_cache\cache_util_win.cc:25] Unable to move the cache: 拒绝访问。 (0x5)
+[0201/172030.558:ERROR:net\disk_cache\disk_cache.cc:236] Unable to create cache
+[0201/172030.558:ERROR:gpu\ipc\host\gpu_disk_cache.cc:724] Gpu Cache Creation failed: -2
+[0201/172030.558:ERROR:net\disk_cache\disk_cache.cc:236] Unable to create cache
+[0201/172030.558:ERROR:gpu\ipc\host\gpu_disk_cache.cc:724] Gpu Cache Creation failed: -2
+[0201/172030.558:ERROR:net\disk_cache\disk_cache.cc:236] Unable to create cache
+[0201/172030.558:ERROR:gpu\ipc\host\gpu_disk_cache.cc:724] Gpu Cache Creation failed: -2
+[0201/172032.579:WARNING:components\leveldb_proto\internal\leveldb_database.cc:125] Unable to open D:\sign-in\browser_data\newapi_extractor\Default\shared_proto_db\metadata: IO error: D:\sign-in\browser_data\newapi_extractor\Default\shared_proto_db\metadata/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0201/172034.604:WARNING:components\leveldb_proto\internal\leveldb_database.cc:125] Unable to open D:\sign-in\browser_data\newapi_extractor\Default\shared_proto_db\metadata: IO error: D:\sign-in\browser_data\newapi_extractor\Default\shared_proto_db\metadata/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)
+[0201/172036.629:WARNING:components\leveldb_proto\internal\leveldb_database.cc:125] Unable to open D:\sign-in\browser_data\newapi_extractor\Default\shared_proto_db\metadata: IO error: D:\sign-in\browser_data\newapi_extractor\Default\shared_proto_db\metadata/LOCK: Access denied. (ChromeMethodBFE: 15::LockFile::5)

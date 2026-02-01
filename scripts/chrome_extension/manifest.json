@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "NewAPI 签到配置提取器",
+  "version": "1.0.0",
+  "description": "一键提取 NewAPI 站点的 session cookie 和 api_user，生成签到配置",
+  "permissions": [
+    "cookies",
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "*://*.wzw.pp.ua/*",
+    "*://*.h-e.top/*",
+    "*://*.kfc-api.sxxe.net/*",
+    "*://*.free.duckcoding.com/*",
+    "*://*.runanytime.hxi.me/*",
+    "*://*.ai.zzhdsgsss.xyz/*",
+    "*://*.new.184772.xyz/*",
+    "*://*.api.mitchll.com/*",
+    "*://*.anyrouter.top/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}

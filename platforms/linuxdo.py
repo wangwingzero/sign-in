@@ -20,6 +20,7 @@ import json
 import random
 
 import httpx
+import nodriver
 from loguru import logger
 
 from platforms.base import BasePlatformAdapter, CheckinResult, CheckinStatus
@@ -71,10 +72,13 @@ class LinuxDOAdapter(BasePlatformAdapter):
 
     async def login(self) -> bool:
         """通过浏览器登录 LinuxDO"""
+        import os
         engine = get_browser_engine()
         logger.info(f"[{self.account_name}] 使用浏览器引擎: {engine}")
 
-        self._browser_manager = BrowserManager(engine=engine, headless=True)
+        # 支持通过环境变量控制 headless 模式（用于调试）
+        headless = os.environ.get("BROWSER_HEADLESS", "true").lower() != "false"
+        self._browser_manager = BrowserManager(engine=engine, headless=headless)
         await self._browser_manager.start()
 
         try:
@@ -225,34 +229,79 @@ class LinuxDOAdapter(BasePlatformAdapter):
         # 7. 点击登录按钮
         logger.info(f"[{self.account_name}] 点击登录按钮...")
         try:
-            login_btn = await tab.select('#login-button', timeout=5)
-            if not login_btn:
-                login_btn = await tab.select('button[type="submit"]', timeout=3)
-            if not login_btn:
-                login_btn = await tab.find("登录", timeout=3)
+            # 先等待一下确保表单完全加载
+            await asyncio.sleep(1)
 
-            if login_btn:
-                await login_btn.mouse_click()
-                logger.info(f"[{self.account_name}] 已点击登录按钮")
-            else:
-                logger.error(f"[{self.account_name}] 未找到登录按钮")
-                return False
+            # 方式1: 使用键盘 Enter 提交（最可靠）
+            await tab.evaluate("""
+                (function() {
+                    const passwordInput = document.querySelector('#login-account-password') ||
+                                          document.querySelector('input[type="password"]');
+                    if (passwordInput) {
+                        passwordInput.focus();
+                    }
+                })()
+            """)
+            await asyncio.sleep(0.3)
+
+            # 发送 Enter 键
+            await tab.send(nodriver.cdp.input_.dispatch_key_event(
+                type_="keyDown",
+                key="Enter",
+                code="Enter",
+                windows_virtual_key_code=13,
+                native_virtual_key_code=13,
+            ))
+            await tab.send(nodriver.cdp.input_.dispatch_key_event(
+                type_="keyUp",
+                key="Enter",
+                code="Enter",
+                windows_virtual_key_code=13,
+                native_virtual_key_code=13,
+            ))
+            logger.info(f"[{self.account_name}] 已发送 Enter 键提交表单")
+
         except Exception as e:
-            logger.error(f"[{self.account_name}] 点击登录按钮失败: {e}")
-            return False
+            logger.warning(f"[{self.account_name}] Enter 键提交失败: {e}，尝试点击按钮")
+            # 回退到点击按钮
+            try:
+                await tab.evaluate("""
+                    (function() {
+                        const btn = document.querySelector('#login-button') ||
+                                    document.querySelector('#signin-button') ||
+                                    document.querySelector('button[type="submit"]') ||
+                                    document.querySelector('input[type="submit"]');
+                        if (btn) btn.click();
+                    })()
+                """)
+                logger.info(f"[{self.account_name}] 使用 JS 点击登录按钮")
+            except Exception as e2:
+                logger.error(f"[{self.account_name}] 点击登录按钮也失败: {e2}")
+                return False
 
         # 8. 等待登录完成
         logger.info(f"[{self.account_name}] 等待登录完成...")
-        for i in range(30):
+        for i in range(60):  # 增加到 60 秒
             await asyncio.sleep(1)
 
             # 检查 URL 是否变化
             current_url = tab.target.url if hasattr(tab, 'target') else ""
-            if "login" not in current_url.lower():
+            if "login" not in current_url.lower() and current_url:
                 logger.info(f"[{self.account_name}] 页面已跳转: {current_url}")
                 break
 
-            if i % 5 == 0:
+            # 检查是否有错误提示
+            if i == 5:
+                error_msg = await tab.evaluate("""
+                    (function() {
+                        const err = document.querySelector('.alert-error, .error, #error-message, .flash-error');
+                        return err ? err.innerText : '';
+                    })()
+                """)
+                if error_msg:
+                    logger.error(f"[{self.account_name}] 登录错误: {error_msg}")
+
+            if i % 10 == 0:
                 logger.debug(f"[{self.account_name}] 等待登录... ({i}s)")
 
         await asyncio.sleep(2)

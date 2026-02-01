@@ -280,11 +280,20 @@ class LinuxDOAccount:
     """LinuxDO 统一账号配置
 
     一个 LinuxDO 账号可以签到多个支持 LinuxDO OAuth 的站点。
+
+    支持的字段：
+    - username: 用户名（必填）
+    - password: 密码（必填）
+    - name: 账号显示名称（可选）
+    - browse_enabled / browse_linuxdo: 是否浏览帖子（可选，默认 True）
+    - browse_count: 浏览帖子数量（可选，默认 10）
+    - level: 账号等级，用于确定浏览数量（可选，1-5 对应 5-25 个帖子）
+    - sites: 要签到的站点列表（可选，默认空，仅浏览主站）
     """
 
     username: str
     password: str
-    sites: list[str] = field(default_factory=lambda: list(NEWAPI_SITES.keys()))
+    sites: list[str] = field(default_factory=list)  # 默认不签到任何站点，仅浏览主站
     browse_linuxdo: bool = True  # 是否浏览 LinuxDO 帖子
     browse_count: int = 10  # 浏览帖子数量
     name: str | None = None
@@ -293,10 +302,16 @@ class LinuxDOAccount:
     def from_dict(cls, data: dict, index: int) -> "LinuxDOAccount":
         """从字典创建 LinuxDOAccount"""
         name = data.get("name") or data.get("username") or f"LinuxDO Account {index + 1}"
-        # 默认签到所有站点
-        sites = data.get("sites", list(NEWAPI_SITES.keys()))
-        browse_linuxdo = data.get("browse_linuxdo", True)
-        browse_count = data.get("browse_count", 10)
+        # 默认不签到任何站点（仅浏览主站）
+        sites = data.get("sites", [])
+
+        # 支持 browse_enabled 或 browse_linuxdo 字段
+        browse_linuxdo = data.get("browse_enabled", data.get("browse_linuxdo", True))
+
+        # 支持 level 字段来确定浏览数量（level 1-5 对应 5-25 个帖子）
+        level = data.get("level", 2)
+        browse_count = data.get("browse_count", level * 5)  # level=1 -> 5, level=2 -> 10, etc.
+
         return cls(
             username=data["username"],
             password=data["password"],
@@ -319,7 +334,7 @@ class ProviderConfig:
     name: str
     domain: str
     login_path: str = "/login"
-    sign_in_path: str | None = "/api/user/sign_in"
+    sign_in_path: str | None = "/api/user/checkin"
     user_info_path: str = "/api/user/self"
     api_user_key: str = "new-api-user"
     bypass_method: Literal["waf_cookies"] | None = None
@@ -343,7 +358,7 @@ class ProviderConfig:
             name=name,
             domain=data["domain"],
             login_path=data.get("login_path", "/login"),
-            sign_in_path=data.get("sign_in_path", "/api/user/sign_in"),
+            sign_in_path=data.get("sign_in_path", "/api/user/checkin"),
             user_info_path=data.get("user_info_path", "/api/user/self"),
             api_user_key=data.get("api_user_key", "new-api-user"),
             bypass_method=data.get("bypass_method"),
@@ -369,6 +384,80 @@ class ProviderConfig:
         如果配置了 sign_in_path，则需要手动签到
         """
         return self.sign_in_path is not None
+
+
+# 预设的 Provider 配置（所有支持的 NewAPI 站点）
+# 用户只需要提供 cookies 和 api_user，代码会根据 provider 字段自动匹配
+DEFAULT_PROVIDERS: dict[str, dict] = {
+    "anyrouter": {
+        "domain": "https://anyrouter.top",
+        "sign_in_path": "/api/user/checkin",
+        "bypass_method": "waf_cookies",
+        "waf_cookie_names": ["acw_tc", "cdn_sec_tc", "acw_sc__v2"],
+    },
+    "wong": {
+        "domain": "https://wzw.pp.ua",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "elysiver": {
+        "domain": "https://h-e.top",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "kfcapi": {
+        "domain": "https://kfc-api.sxxe.net",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "duckcoding": {
+        "domain": "https://free.duckcoding.com",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "runanytime": {
+        "domain": "https://runanytime.hxi.me",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "neb": {
+        "domain": "https://ai.zzhdsgsss.xyz",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "zeroliya": {
+        "domain": "https://new.184772.xyz",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "mitchll": {
+        "domain": "https://api.mitchll.com",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "kingo": {
+        "domain": "https://new-api-bxhm.onrender.com",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "techstar": {
+        "domain": "https://aidrouter.qzz.io",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "lightllm": {
+        "domain": "https://lightllm.online",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "hotaru": {
+        "domain": "https://api.hotaruapi.top",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "dev88": {
+        "domain": "https://api.dev88.tech",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "huan": {
+        "domain": "https://ai.huan666.de",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "agentrouter": {
+        "domain": "https://agentrouter.org",
+        "sign_in_path": None,  # 自动签到，无需手动调用
+        "bypass_method": "waf_cookies",
+        "waf_cookie_names": ["acw_tc"],
+    },
+}
 
 
 @dataclass
@@ -595,8 +684,24 @@ class AppConfig:
 
     @classmethod
     def _load_anyrouter_accounts(cls) -> list[AnyRouterAccount]:
-        """从环境变量加载 AnyRouter 账号配置"""
-        accounts_str = os.getenv("ANYROUTER_ACCOUNTS")
+        """从环境变量加载 NewAPI 站点账号配置
+        
+        支持两个环境变量（优先级从高到低）：
+        1. NEWAPI_ACCOUNTS - 新的统一配置名
+        2. ANYROUTER_ACCOUNTS - 兼容旧配置
+        
+        JSON 格式示例:
+        [
+            {
+                "name": "我的账号",
+                "provider": "anyrouter",  // 站点ID，见 DEFAULT_PROVIDERS
+                "cookies": {"session": "xxx"},
+                "api_user": "12345"
+            }
+        ]
+        """
+        # 优先使用 NEWAPI_ACCOUNTS，兼容 ANYROUTER_ACCOUNTS
+        accounts_str = os.getenv("NEWAPI_ACCOUNTS") or os.getenv("ANYROUTER_ACCOUNTS")
         if not accounts_str:
             return []
 
@@ -604,7 +709,7 @@ class AppConfig:
             accounts_data = json.loads(accounts_str)
 
             if not isinstance(accounts_data, list):
-                logger.error("ANYROUTER_ACCOUNTS 配置格式错误: 必须是 JSON 数组格式")
+                logger.error("NEWAPI_ACCOUNTS 配置格式错误: 必须是 JSON 数组格式")
                 return []
 
             accounts = []
@@ -616,48 +721,43 @@ class AppConfig:
                 if "cookies" not in account_dict or "api_user" not in account_dict:
                     logger.error(f"账号 {i + 1} 缺少必填字段: 需要 'cookies' 和 'api_user'")
                     continue
+                
+                # 验证 provider 是否在预设列表中
+                provider = account_dict.get("provider", "anyrouter")
+                if provider not in DEFAULT_PROVIDERS:
+                    logger.warning(f"账号 {i + 1} 的 provider '{provider}' 不在预设列表中，将使用默认配置")
 
                 accounts.append(AnyRouterAccount.from_dict(account_dict, i))
 
             if accounts:
-                logger.info(f"成功加载 {len(accounts)} 个 AnyRouter 账号配置")
+                # 统计各站点账号数量
+                provider_counts = {}
+                for acc in accounts:
+                    provider_counts[acc.provider] = provider_counts.get(acc.provider, 0) + 1
+                
+                count_str = ", ".join(f"{p}: {c}" for p, c in sorted(provider_counts.items()))
+                logger.info(f"成功加载 {len(accounts)} 个 NewAPI 账号配置 ({count_str})")
             return accounts
 
         except json.JSONDecodeError as e:
-            logger.error(f"ANYROUTER_ACCOUNTS JSON 解析失败: {e}")
+            logger.error(f"NEWAPI_ACCOUNTS JSON 解析失败: {e}")
             return []
         except Exception as e:
-            logger.error(f"加载 ANYROUTER_ACCOUNTS 时发生错误: {e}")
+            logger.error(f"加载 NEWAPI_ACCOUNTS 时发生错误: {e}")
             return []
 
     @classmethod
     def _load_providers(cls) -> dict[str, ProviderConfig]:
-        """加载 Provider 配置"""
-        providers = {
-            "anyrouter": ProviderConfig(
-                name="anyrouter",
-                domain="https://anyrouter.top",
-                bypass_method="waf_cookies",
-                waf_cookie_names=["acw_tc", "cdn_sec_tc", "acw_sc__v2"],
-            ),
-            "agentrouter": ProviderConfig(
-                name="agentrouter",
-                domain="https://agentrouter.org",
-                sign_in_path=None,
-                bypass_method="waf_cookies",
-                waf_cookie_names=["acw_tc"],
-            ),
-            "wong": ProviderConfig(
-                name="wong",
-                domain="https://wzw.pp.ua",
-                sign_in_path="/api/user/checkin",
-                user_info_path="/api/user/self",
-                api_user_key="new-api-user",
-                bypass_method=None,
-                waf_cookie_names=None,
-            ),
-        }
+        """加载 Provider 配置
+        
+        默认加载所有预设的站点配置，用户可以通过 PROVIDERS 环境变量覆盖或添加新站点。
+        """
+        # 从预设配置创建 ProviderConfig 对象
+        providers = {}
+        for name, config_data in DEFAULT_PROVIDERS.items():
+            providers[name] = ProviderConfig.from_dict(name, config_data)
 
+        # 允许用户通过环境变量覆盖或添加新配置
         providers_str = os.getenv("PROVIDERS")
         if providers_str:
             try:
