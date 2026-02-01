@@ -9,6 +9,9 @@
 - newapi: 所有 NewAPI 架构站点的签到（使用 Cookie + API）
 """
 
+import ssl
+import tempfile
+
 import httpx
 from loguru import logger
 
@@ -16,6 +19,16 @@ from platforms.base import CheckinResult, CheckinStatus
 from platforms.linuxdo import LinuxDOAdapter
 from utils.config import AppConfig, DEFAULT_PROVIDERS
 from utils.notify import NotificationManager
+
+
+def _create_ssl_context() -> ssl.SSLContext:
+    """创建兼容旧服务器的 SSL 上下文"""
+    ctx = ssl.create_default_context()
+    ctx.set_ciphers('DEFAULT')
+    ctx.options |= 0x4  # ssl.OP_LEGACY_SERVER_CONNECT
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
 
 
 class PlatformManager:
@@ -157,7 +170,16 @@ class PlatformManager:
         cookies = {"session": session_cookie}
         details = {}
 
-        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+        # 如果需要 WAF bypass，先获取 WAF cookies
+        if provider.needs_waf_cookies():
+            waf_cookies = await self._get_waf_cookies(provider, account_name)
+            if waf_cookies:
+                cookies.update(waf_cookies)
+            else:
+                logger.warning(f"[{account_name}] 无法获取 WAF cookies，尝试直接请求")
+
+        ssl_ctx = _create_ssl_context()
+        async with httpx.AsyncClient(timeout=30.0, verify=ssl_ctx) as client:
             # 1. 获取用户信息
             user_info_url = f"{provider.domain}{provider.user_info_path}"
             try:
@@ -253,6 +275,62 @@ class PlatformManager:
         if isinstance(cookies, str):
             return cookies
         return ""
+
+    async def _get_waf_cookies(self, provider, account_name: str) -> dict | None:
+        """使用 Patchright 浏览器获取 WAF cookies"""
+        try:
+            from patchright.async_api import async_playwright
+        except ImportError:
+            logger.warning(f"[{account_name}] Patchright 未安装，跳过 WAF bypass")
+            return None
+
+        logger.info(f"[{account_name}] 启动浏览器获取 WAF cookies...")
+        required_cookies = provider.waf_cookie_names or []
+        login_url = f"{provider.domain}{provider.login_path}"
+
+        try:
+            async with async_playwright() as p:
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    context = await p.chromium.launch_persistent_context(
+                        user_data_dir=temp_dir,
+                        headless=True,
+                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/138.0.0.0 Safari/537.36",
+                        viewport={"width": 1920, "height": 1080},
+                        args=[
+                            "--disable-blink-features=AutomationControlled",
+                            "--disable-dev-shm-usage",
+                            "--no-sandbox",
+                        ],
+                    )
+
+                    page = await context.new_page()
+                    await page.goto(login_url, wait_until="networkidle", timeout=30000)
+
+                    # 等待页面加载完成
+                    try:
+                        await page.wait_for_function('document.readyState === "complete"', timeout=5000)
+                    except Exception:
+                        await page.wait_for_timeout(3000)
+
+                    # 获取 cookies
+                    cookies = await page.context.cookies()
+                    waf_cookies = {}
+                    for cookie in cookies:
+                        if cookie.get("name") in required_cookies:
+                            waf_cookies[cookie["name"]] = cookie["value"]
+
+                    await context.close()
+
+                    if waf_cookies:
+                        logger.success(f"[{account_name}] 获取到 {len(waf_cookies)} 个 WAF cookies")
+                        return waf_cookies
+                    else:
+                        logger.warning(f"[{account_name}] 未获取到 WAF cookies")
+                        return None
+
+        except Exception as e:
+            logger.error(f"[{account_name}] 获取 WAF cookies 失败: {e}")
+            return None
 
     def send_summary_notification(self, force: bool = False) -> None:
         """发送签到汇总通知"""
