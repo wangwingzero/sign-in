@@ -16,6 +16,7 @@ Discourse API:
 
 import asyncio
 import contextlib
+import json
 import random
 
 import httpx
@@ -87,52 +88,200 @@ class LinuxDOAdapter(BasePlatformAdapter):
             logger.error(f"[{self.account_name}] 登录失败: {e}")
             return False
 
+    async def _wait_for_cloudflare_nodriver(self, tab, timeout: int = 30) -> bool:
+        """等待 Cloudflare 挑战完成（nodriver 专用）
+
+        Args:
+            tab: nodriver 标签页
+            timeout: 超时时间（秒）
+
+        Returns:
+            是否通过 Cloudflare 验证
+        """
+        logger.info(f"[{self.account_name}] 检测 Cloudflare 挑战...")
+
+        start_time = asyncio.get_event_loop().time()
+
+        while asyncio.get_event_loop().time() - start_time < timeout:
+            try:
+                # 获取页面标题
+                title = await tab.evaluate("document.title")
+
+                # Cloudflare 挑战页面的特征
+                cf_indicators = [
+                    "just a moment",
+                    "checking your browser",
+                    "please wait",
+                    "verifying",
+                    "something went wrong",
+                ]
+
+                title_lower = title.lower() if title else ""
+
+                # 检查是否还在 Cloudflare 挑战中
+                is_cf_page = any(ind in title_lower for ind in cf_indicators)
+
+                if not is_cf_page and title and "linux" in title_lower:
+                    logger.success(f"[{self.account_name}] Cloudflare 挑战通过！页面标题: {title}")
+                    return True
+
+                if is_cf_page:
+                    logger.debug(f"[{self.account_name}] 等待 Cloudflare... 当前标题: {title}")
+
+            except Exception as e:
+                logger.debug(f"[{self.account_name}] 检查页面状态时出错: {e}")
+
+            await asyncio.sleep(2)
+
+        logger.warning(f"[{self.account_name}] 等待 Cloudflare 超时 ({timeout}s)")
+        return False
+
     async def _login_nodriver(self) -> bool:
-        """使用 nodriver 登录"""
+        """使用 nodriver 登录（优化版本，支持 GitHub Actions）"""
         tab = self._browser_manager.page
 
-        logger.info(f"[{self.account_name}] 访问 LinuxDO 登录页面...")
+        # 1. 先访问首页，让 Cloudflare 验证
+        logger.info(f"[{self.account_name}] 访问 LinuxDO 首页...")
+        await tab.get(self.BASE_URL)
+
+        # 2. 等待 Cloudflare 挑战完成
+        cf_passed = await self._wait_for_cloudflare_nodriver(tab, timeout=30)
+        if not cf_passed:
+            # 尝试刷新页面
+            logger.info(f"[{self.account_name}] 尝试刷新页面...")
+            await tab.reload()
+            cf_passed = await self._wait_for_cloudflare_nodriver(tab, timeout=20)
+            if not cf_passed:
+                logger.error(f"[{self.account_name}] Cloudflare 验证失败")
+                return False
+
+        # 3. 访问登录页面
+        logger.info(f"[{self.account_name}] 访问登录页面...")
         await tab.get(f"{self.BASE_URL}/login")
-        await asyncio.sleep(2)
+        await asyncio.sleep(3)
 
-        # 等待 Cloudflare
-        await self._browser_manager.wait_for_cloudflare(timeout=30)
+        # 4. 等待登录表单加载
+        logger.info(f"[{self.account_name}] 等待登录表单加载...")
+        await asyncio.sleep(5)
 
-        # 填写登录表单
-        logger.info(f"[{self.account_name}] 填写登录表单...")
+        # 使用 JS 等待输入框出现
+        for attempt in range(10):
+            try:
+                has_input = await tab.evaluate("""
+                    (function() {
+                        const input = document.querySelector('#login-account-name') ||
+                                      document.querySelector('input[name="login"]') ||
+                                      document.querySelector('input[type="text"]');
+                        return !!input;
+                    })()
+                """)
+                if has_input:
+                    logger.info(f"[{self.account_name}] 登录表单已加载")
+                    break
+            except Exception:
+                pass
+            await asyncio.sleep(1)
+
+        # 5. 填写用户名
         try:
-            username_input = await tab.select('#login-account-name', timeout=10)
+            username_input = await tab.select('#login-account-name', timeout=5)
+            if not username_input:
+                username_input = await tab.select('input[name="login"]', timeout=3)
+            if not username_input:
+                username_input = await tab.select('input[type="text"]', timeout=3)
+
             if username_input:
+                await username_input.click()
+                await asyncio.sleep(0.3)
                 await username_input.send_keys(self.username)
+                logger.info(f"[{self.account_name}] 已输入用户名")
                 await asyncio.sleep(0.5)
-
-            password_input = await tab.select('#login-account-password', timeout=5)
-            if password_input:
-                await password_input.send_keys(self.password)
-                await asyncio.sleep(0.5)
-
-            # 点击登录
-            login_btn = await tab.select('#login-button', timeout=5)
-            if login_btn:
-                await login_btn.mouse_click()
-                await asyncio.sleep(5)
+            else:
+                logger.error(f"[{self.account_name}] 未找到用户名输入框")
+                return False
         except Exception as e:
-            logger.error(f"[{self.account_name}] 填写表单失败: {e}")
+            logger.error(f"[{self.account_name}] 输入用户名失败: {e}")
             return False
 
-        # 检查登录状态
+        # 6. 填写密码
+        try:
+            password_input = await tab.select('#login-account-password', timeout=5)
+            if not password_input:
+                password_input = await tab.select('input[type="password"]', timeout=3)
+
+            if password_input:
+                await password_input.click()
+                await asyncio.sleep(0.3)
+                await password_input.send_keys(self.password)
+                logger.info(f"[{self.account_name}] 已输入密码")
+                await asyncio.sleep(0.5)
+            else:
+                logger.error(f"[{self.account_name}] 未找到密码输入框")
+                return False
+        except Exception as e:
+            logger.error(f"[{self.account_name}] 输入密码失败: {e}")
+            return False
+
+        # 7. 点击登录按钮
+        logger.info(f"[{self.account_name}] 点击登录按钮...")
+        try:
+            login_btn = await tab.select('#login-button', timeout=5)
+            if not login_btn:
+                login_btn = await tab.select('button[type="submit"]', timeout=3)
+            if not login_btn:
+                login_btn = await tab.find("登录", timeout=3)
+
+            if login_btn:
+                await login_btn.mouse_click()
+                logger.info(f"[{self.account_name}] 已点击登录按钮")
+            else:
+                logger.error(f"[{self.account_name}] 未找到登录按钮")
+                return False
+        except Exception as e:
+            logger.error(f"[{self.account_name}] 点击登录按钮失败: {e}")
+            return False
+
+        # 8. 等待登录完成
+        logger.info(f"[{self.account_name}] 等待登录完成...")
+        for i in range(30):
+            await asyncio.sleep(1)
+
+            # 检查 URL 是否变化
+            current_url = tab.target.url if hasattr(tab, 'target') else ""
+            if "login" not in current_url.lower():
+                logger.info(f"[{self.account_name}] 页面已跳转: {current_url}")
+                break
+
+            if i % 5 == 0:
+                logger.debug(f"[{self.account_name}] 等待登录... ({i}s)")
+
+        await asyncio.sleep(2)
+
+        # 9. 检查登录状态
         current_url = tab.target.url if hasattr(tab, 'target') else ""
+        logger.info(f"[{self.account_name}] 当前 URL: {current_url}")
+
         if "login" in current_url.lower():
             logger.error(f"[{self.account_name}] 登录失败，仍在登录页面")
             return False
 
-        # 获取 cookies
-        cookies = await self._browser_manager.get_cookies()
-        for cookie in cookies:
-            name = getattr(cookie, 'name', cookie.get('name', ''))
-            value = getattr(cookie, 'value', cookie.get('value', ''))
-            if name and value:
-                self._cookies[name] = value
+        logger.success(f"[{self.account_name}] 登录成功！")
+
+        # 10. 获取 cookies
+        logger.info(f"[{self.account_name}] 获取 cookies...")
+        try:
+            import nodriver.cdp.network as cdp_network
+            all_cookies = await tab.send(cdp_network.get_all_cookies())
+            for cookie in all_cookies:
+                self._cookies[cookie.name] = cookie.value
+            logger.info(f"[{self.account_name}] 获取到 {len(self._cookies)} 个 cookies")
+
+            # 打印关键 cookies
+            for key in ['_forum_session', '_t', 'cf_clearance']:
+                if key in self._cookies:
+                    logger.debug(f"[{self.account_name}]   {key}: {self._cookies[key][:30]}...")
+        except Exception as e:
+            logger.warning(f"[{self.account_name}] 获取 cookies 失败: {e}")
 
         # 获取 CSRF token
         self._csrf_token = self._cookies.get('_forum_session')
@@ -140,7 +289,6 @@ class LinuxDOAdapter(BasePlatformAdapter):
         # 初始化 HTTP 客户端
         self._init_http_client()
 
-        logger.success(f"[{self.account_name}] 登录成功")
         return True
 
     async def _login_drissionpage(self) -> bool:
@@ -227,7 +375,22 @@ class LinuxDOAdapter(BasePlatformAdapter):
         """执行浏览帖子操作"""
         logger.info(f"[{self.account_name}] 开始浏览帖子...")
 
-        # 获取帖子列表
+        # 优先使用浏览器直接浏览（更真实）
+        if self._browser_manager and self._browser_manager.engine == "nodriver":
+            try:
+                browsed = await self._browse_topics_via_browser()
+                if browsed > 0:
+                    return CheckinResult(
+                        platform=self.platform_name,
+                        account=self.account_name,
+                        status=CheckinStatus.SUCCESS,
+                        message=f"成功浏览 {browsed} 个帖子（浏览器模式）",
+                        details={"browsed": browsed, "mode": "browser"},
+                    )
+            except Exception as e:
+                logger.warning(f"[{self.account_name}] 浏览器浏览失败，回退到 API 模式: {e}")
+
+        # 回退到 HTTP API 模式
         topics = self._get_topics()
         if not topics:
             return CheckinResult(
@@ -241,7 +404,7 @@ class LinuxDOAdapter(BasePlatformAdapter):
         browse_count = min(self.browse_count, len(topics))
         selected_topics = random.sample(topics, browse_count)
 
-        logger.info(f"[{self.account_name}] 将浏览 {browse_count} 个帖子")
+        logger.info(f"[{self.account_name}] 将浏览 {browse_count} 个帖子（API 模式）")
 
         for i, topic in enumerate(selected_topics):
             topic_id = topic.get("id")
@@ -260,6 +423,7 @@ class LinuxDOAdapter(BasePlatformAdapter):
         details = {
             "browsed": self._browsed_count,
             "total_time": f"{self._total_time // 1000}s",
+            "mode": "api",
         }
 
         if self._browsed_count > 0:
@@ -278,6 +442,91 @@ class LinuxDOAdapter(BasePlatformAdapter):
                 message="浏览帖子失败",
                 details=details,
             )
+
+    async def _browse_topics_via_browser(self) -> int:
+        """使用浏览器直接浏览帖子（更真实的浏览行为）
+
+        Returns:
+            成功浏览的帖子数量
+        """
+        tab = self._browser_manager.page
+        browsed_count = 0
+
+        # 访问最新帖子页面
+        logger.info(f"[{self.account_name}] 访问最新帖子页面...")
+        await tab.get(f"{self.BASE_URL}/latest")
+        await asyncio.sleep(5)
+
+        # 等待帖子列表加载
+        for _ in range(10):
+            has_topics = await tab.evaluate("document.querySelectorAll('a.title').length > 0")
+            if has_topics:
+                break
+            await asyncio.sleep(1)
+
+        # 获取帖子链接
+        topic_links_json = await tab.evaluate("""
+            (function() {
+                const links = document.querySelectorAll('a.title.raw-link, a.title[href*="/t/"]');
+                const result = [];
+                for (let i = 0; i < Math.min(links.length, 15); i++) {
+                    const a = links[i];
+                    if (a.href && a.href.includes('/t/')) {
+                        result.push({
+                            href: a.href,
+                            title: (a.innerText || a.textContent || '').trim().substring(0, 50)
+                        });
+                    }
+                }
+                return JSON.stringify(result);
+            })()
+        """)
+
+        # 解析 JSON 结果
+        topic_links = []
+        if topic_links_json and isinstance(topic_links_json, str):
+            try:
+                topic_links = json.loads(topic_links_json)
+            except json.JSONDecodeError:
+                logger.warning(f"[{self.account_name}] JSON 解析失败")
+        elif isinstance(topic_links_json, list):
+            topic_links = topic_links_json
+
+        if not topic_links:
+            logger.warning(f"[{self.account_name}] 未获取到帖子列表")
+            return 0
+
+        logger.info(f"[{self.account_name}] 找到 {len(topic_links)} 个帖子")
+
+        # 随机选择帖子浏览
+        browse_count = min(self.browse_count, len(topic_links))
+        selected = random.sample(topic_links, browse_count)
+
+        for i, topic in enumerate(selected):
+            title = topic.get('title', 'Unknown')[:40]
+            href = topic.get('href', '')
+
+            logger.info(f"[{self.account_name}] [{i+1}/{browse_count}] 浏览: {title}...")
+
+            try:
+                # 访问帖子
+                await tab.get(href)
+
+                # 模拟阅读（随机等待 3-8 秒）
+                read_time = random.uniform(3, 8)
+                logger.debug(f"[{self.account_name}]   阅读 {read_time:.1f} 秒...")
+                await asyncio.sleep(read_time)
+
+                # 滚动页面
+                await tab.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
+                await asyncio.sleep(1)
+
+                browsed_count += 1
+            except Exception as e:
+                logger.warning(f"[{self.account_name}] 浏览帖子失败: {e}")
+
+        logger.success(f"[{self.account_name}] 成功浏览 {browsed_count} 个帖子！")
+        return browsed_count
 
     def _get_topics(self) -> list:
         """获取帖子列表"""
