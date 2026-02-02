@@ -38,36 +38,26 @@ logger.add(
     level="DEBUG"
 )
 
-# 账号配置（请修改为你自己的账号信息）
-# - username: LinuxDO 登录邮箱
-# - password: LinuxDO 登录密码
-# - browse_enabled: 是否启用浏览（True/False）
-# - name: 账号备注名称
-# - level: 刷帖等级（1=快速刷帖每帖1分钟, 2=中速, 3=慢速模拟真人阅读）
-ACCOUNTS = [
-    {
-        "username": "your_email_1@example.com",
-        "password": "your_password_1",
-        "browse_enabled": True,
-        "name": "主账号",
-        "level": 3
-    },
-    {
-        "username": "your_email_2@example.com",
-        "password": "your_password_2",
-        "browse_enabled": True,
-        "name": "小号1",
-        "level": 1
-    },
-    # 可以继续添加更多账号...
-    # {
-    #     "username": "your_email_3@example.com",
-    #     "password": "your_password_3",
-    #     "browse_enabled": True,
-    #     "name": "小号2",
-    #     "level": 1
-    # },
-]
+# 账号配置文件路径
+# 请复制 accounts.example.json 为 accounts.json 并填写你的账号信息
+ACCOUNTS_FILE = Path(__file__).parent / "accounts.json"
+
+
+def load_accounts() -> list:
+    """从配置文件加载账号信息"""
+    if not ACCOUNTS_FILE.exists():
+        logger.error(f"账号配置文件不存在: {ACCOUNTS_FILE}")
+        logger.error("请复制 accounts.example.json 为 accounts.json 并填写账号信息")
+        sys.exit(1)
+    
+    try:
+        with open(ACCOUNTS_FILE, "r", encoding="utf-8") as f:
+            accounts = json.load(f)
+        logger.info(f"已加载 {len(accounts)} 个账号")
+        return accounts
+    except json.JSONDecodeError as e:
+        logger.error(f"账号配置文件格式错误: {e}")
+        sys.exit(1)
 
 # 定时配置
 SCHEDULE_TIMES = ["05:00", "08:00", "22:00"]
@@ -564,19 +554,22 @@ async def run_all_accounts():
     logger.info(f"开始执行定时任务 - {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
     logger.info(f"{'=' * 60}")
     
+    # 加载账号配置
+    accounts = load_accounts()
+    
     # 计算时间分配
-    time_allocation = calculate_time_allocation(ACCOUNTS)
+    time_allocation = calculate_time_allocation(accounts)
     
     # 打印时间分配
     logger.info("时间分配:")
-    for account in ACCOUNTS:
+    for account in accounts:
         name = account.get("name", account["username"])
         minutes = time_allocation[account["username"]]
         level = account.get("level", 1)
         logger.info(f"  - {name} (Level {level}): {minutes} 分钟")
     
     # 按等级排序，高等级（数字小）优先
-    sorted_accounts = sorted(ACCOUNTS, key=lambda x: x.get("level", 1))
+    sorted_accounts = sorted(accounts, key=lambda x: x.get("level", 1))
     
     # 依次处理每个账号
     for account in sorted_accounts:
