@@ -388,39 +388,100 @@ class NewAPIBrowserCheckin:
         logger.info(f"[{self.account_name}] 查找 LinuxDO OAuth 登录按钮...")
         await asyncio.sleep(3)
 
-        # 打印页面内容帮助调试
+        # Debug 模式：打印页面上所有可点击元素帮助调试
         if self._debug:
             try:
                 page_text = await tab.evaluate("document.body.innerText.substring(0, 500)")
                 logger.debug(f"[{self.account_name}] 页面内容: {page_text[:200]}...")
-            except Exception:
-                pass
 
-        # 点击 LinuxDO OAuth 按钮
-        for attempt in range(5):
-            try:
-                clicked = await tab.evaluate("""
+                # 列出所有可能的登录按钮
+                buttons_info = await tab.evaluate("""
                     (function() {
-                        const allElements = document.querySelectorAll('*');
-                        for (const el of allElements) {
-                            const text = (el.innerText || '').toLowerCase();
-                            if (text.includes('linuxdo') && (text.includes('继续') || text.includes('登录'))) {
-                                el.click();
-                                return 'clicked: ' + text.substring(0, 40);
+                        const results = [];
+                        const elements = document.querySelectorAll('button, a, [role="button"], [onclick]');
+                        for (const el of elements) {
+                            const text = (el.innerText || el.textContent || '').trim();
+                            const href = el.href || el.getAttribute('href') || '';
+                            if (text || href) {
+                                results.push({
+                                    tag: el.tagName,
+                                    text: text.substring(0, 50),
+                                    href: href.substring(0, 80),
+                                    class: el.className.substring(0, 50)
+                                });
                             }
                         }
+                        return JSON.stringify(results.slice(0, 20));
+                    })()
+                """)
+                logger.debug(f"[{self.account_name}] 页面按钮列表: {buttons_info}")
+            except Exception as e:
+                logger.debug(f"[{self.account_name}] 获取页面信息失败: {e}")
+
+        # 点击 LinuxDO OAuth 按钮（使用多种匹配策略）
+        clicked = False
+        for attempt in range(5):
+            try:
+                # 策略1: 查找包含 linuxdo 的链接（最可靠）
+                clicked_result = await tab.evaluate("""
+                    (function() {
+                        // 策略1: 查找 href 包含 linuxdo 或 oauth 的链接
+                        const links = document.querySelectorAll('a[href*="linuxdo"], a[href*="oauth/linuxdo"]');
+                        for (const link of links) {
+                            link.click();
+                            return 'clicked link: ' + (link.href || '').substring(0, 60);
+                        }
+
+                        // 策略2: 查找文本包含 LINUX DO 的按钮/链接（不区分大小写，支持多种写法）
+                        const allClickable = document.querySelectorAll('button, a, [role="button"], div[onclick], span[onclick]');
+                        const patterns = [
+                            /linux\s*do/i,           // LINUX DO, LinuxDO, linux do
+                            /通过.*linux/i,          // 通过 LINUX DO 登录
+                            /使用.*linux/i,          // 使用 LINUX DO 登录
+                            /continue.*linux/i,      // Continue with LinuxDO
+                            /login.*linux/i,         // Login with LinuxDO
+                            /第三方.*登录/i,          // 第三方登录（可能是展开按钮）
+                            /其他.*登录/i,           // 其他登录方式
+                            /更多.*方式/i            // 更多登录方式
+                        ];
+
+                        for (const el of allClickable) {
+                            const text = (el.innerText || el.textContent || '').trim();
+                            for (const pattern of patterns) {
+                                if (pattern.test(text)) {
+                                    el.click();
+                                    return 'clicked text: ' + text.substring(0, 40);
+                                }
+                            }
+                        }
+
+                        // 策略3: 查找包含 linuxdo 图标的元素
+                        const icons = document.querySelectorAll('img[src*="linuxdo"], svg[class*="linuxdo"], i[class*="linuxdo"]');
+                        for (const icon of icons) {
+                            const parent = icon.closest('button, a, [role="button"]') || icon.parentElement;
+                            if (parent) {
+                                parent.click();
+                                return 'clicked icon parent';
+                            }
+                        }
+
                         return null;
                     })()
                 """)
-                if clicked:
-                    logger.info(f"[{self.account_name}] 点击了 OAuth 按钮: {clicked}")
+
+                if clicked_result:
+                    logger.info(f"[{self.account_name}] {clicked_result}")
                     await self._save_debug_screenshot(tab, "oauth_button_clicked")
+                    clicked = True
                     break
+
                 logger.debug(f"[{self.account_name}] 第 {attempt + 1} 次尝试未找到 OAuth 按钮")
             except Exception as e:
                 logger.debug(f"[{self.account_name}] 查找 OAuth 按钮出错: {e}")
             await asyncio.sleep(1)
-        else:
+
+        if not clicked:
+            logger.warning(f"[{self.account_name}] 未找到 LinuxDO OAuth 按钮")
             await self._save_debug_screenshot(tab, "oauth_button_not_found")
 
         # 等待 OAuth 授权
