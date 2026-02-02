@@ -34,10 +34,9 @@ from utils.config import DEFAULT_PROVIDERS, ProviderConfig
 
 def is_debug_mode() -> bool:
     """检查是否开启 debug 模式"""
-    return (
-        os.environ.get("DEBUG", "").lower() in ("true", "1", "yes") or
-        os.environ.get("NEWAPI_DEBUG", "").lower() in ("true", "1", "yes")
-    )
+    return os.environ.get("DEBUG", "").lower() in ("true", "1", "yes") or os.environ.get(
+        "NEWAPI_DEBUG", ""
+    ).lower() in ("true", "1", "yes")
 
 
 class NewAPIBrowserCheckin:
@@ -120,7 +119,7 @@ class NewAPIBrowserCheckin:
         if not self._debug:
             return
         try:
-            url = tab.target.url if hasattr(tab, 'target') else "unknown"
+            url = tab.target.url if hasattr(tab, "target") else "unknown"
             title = await tab.evaluate("document.title") or "unknown"
             logger.debug(f"[{self._account_name}] [{context}] URL: {url}, Title: {title}")
         except Exception as e:
@@ -296,7 +295,7 @@ class NewAPIBrowserCheckin:
                 }})()
             """)
 
-            if fill_result != 'success':
+            if fill_result != "success":
                 logger.error(f"[{self.account_name}] 填写表单失败: {fill_result}")
                 return False
             logger.info(f"[{self.account_name}] 已填写用户名和密码")
@@ -328,7 +327,7 @@ class NewAPIBrowserCheckin:
         logger.info(f"[{self.account_name}] 等待登录完成...")
         for i in range(60):
             await asyncio.sleep(1)
-            current_url = tab.target.url if hasattr(tab, 'target') else ""
+            current_url = tab.target.url if hasattr(tab, "target") else ""
 
             if current_url and "login" not in current_url.lower() and "linux.do" in current_url:
                 logger.info(f"[{self.account_name}] 页面已跳转: {current_url}")
@@ -355,7 +354,7 @@ class NewAPIBrowserCheckin:
                     await self._save_debug_screenshot(tab, f"login_waiting_{i}s")
 
         await asyncio.sleep(2)
-        current_url = tab.target.url if hasattr(tab, 'target') else ""
+        current_url = tab.target.url if hasattr(tab, "target") else ""
 
         if "login" in current_url.lower():
             logger.error(f"[{self.account_name}] 登录失败，仍在登录页面")
@@ -378,7 +377,7 @@ class NewAPIBrowserCheckin:
         await self._wait_for_cloudflare(tab, timeout=15)
 
         # 检查是否已经登录
-        current_url = tab.target.url if hasattr(tab, 'target') else ""
+        current_url = tab.target.url if hasattr(tab, "target") else ""
         if self.provider.domain in current_url and "login" not in current_url.lower():
             logger.success(f"[{self.account_name}] 已登录，直接获取 session")
             await self._save_debug_screenshot(tab, "already_logged_in")
@@ -495,7 +494,7 @@ class NewAPIBrowserCheckin:
             # 检查新标签页
             if len(browser.tabs) > 1:
                 for t in browser.tabs:
-                    t_url = t.target.url if hasattr(t, 'target') else ""
+                    t_url = t.target.url if hasattr(t, "target") else ""
                     if "connect.linux.do" in t_url or "authorize" in t_url.lower():
                         logger.info(f"[{self.account_name}] 找到授权标签页: {t_url}")
                         await t.bring_to_front()
@@ -503,7 +502,7 @@ class NewAPIBrowserCheckin:
                         await asyncio.sleep(1)
                         break
 
-            current_url = tab.target.url if hasattr(tab, 'target') else ""
+            current_url = tab.target.url if hasattr(tab, "target") else ""
 
             # 如果已经在目标站点且不是登录页，获取 session
             if self.provider.domain in current_url and "login" not in current_url.lower():
@@ -589,7 +588,7 @@ class NewAPIBrowserCheckin:
 
             # 检查所有标签页是否有已登录的
             for t in browser.tabs:
-                t_url = t.target.url if hasattr(t, 'target') else ""
+                t_url = t.target.url if hasattr(t, "target") else ""
                 if self.provider.domain in t_url and "login" not in t_url.lower():
                     await t.bring_to_front()
                     await self._save_debug_screenshot(t, "oauth_success")
@@ -612,6 +611,7 @@ class NewAPIBrowserCheckin:
 
         try:
             import nodriver.cdp.network as cdp_network
+
             all_cookies = await tab.send(cdp_network.get_all_cookies())
 
             # Debug: 打印所有 cookies
