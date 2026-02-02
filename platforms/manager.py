@@ -438,10 +438,9 @@ class PlatformManager:
                     await page.wait_for_timeout(1000)
 
                 # 等待页面完全加载
-                try:
+                import contextlib
+                with contextlib.suppress(Exception):
                     await page.wait_for_load_state("networkidle", timeout=10000)
-                except Exception:
-                    pass
 
                 # 获取 cookies
                 cookies = await page.context.cookies()
@@ -475,7 +474,7 @@ class PlatformManager:
             logger.warning(f"[{account_name}] 未获取到任何 WAF cookies")
             return None
 
-    def send_summary_notification(self, force: bool = False) -> None:
+    def send_summary_notification(self, force: bool = False) -> None:  # noqa: ARG002
         """发送签到汇总通知"""
         if not self.results:
             logger.info("没有签到结果，跳过通知")
