@@ -204,9 +204,19 @@ class NewAPIBrowserCheckin:
                 # 检测页面内容中的 Cloudflare Turnstile 特征
                 has_turnstile = await tab.evaluate(r"""
                     (function() {
-                        // 检查是否有 Turnstile iframe
-                        const iframes = document.querySelectorAll('iframe[src*="challenges.cloudflare.com"]');
-                        if (iframes.length > 0) return true;
+                        // 检查是否有 Turnstile iframe（多种选择器）
+                        const selectors = [
+                            'iframe[src*="challenges.cloudflare.com"]',
+                            'iframe[src*="turnstile"]',
+                            'iframe[title*="Cloudflare"]',
+                            'iframe[title*="Widget containing"]',
+                            'div.cf-turnstile iframe',
+                            'div[data-sitekey] iframe'
+                        ];
+                        for (const sel of selectors) {
+                            const iframes = document.querySelectorAll(sel);
+                            if (iframes.length > 0) return true;
+                        }
 
                         // 检查页面文字是否包含验证提示
                         const bodyText = document.body?.innerText || '';
@@ -228,19 +238,53 @@ class NewAPIBrowserCheckin:
                     # 尝试点击 Turnstile 验证框（使用坐标点击，因为 iframe 内容无法直接访问）
                     if not turnstile_clicked:
                         try:
-                            # 获取 Turnstile iframe 的位置
+                            # 获取 Turnstile iframe 的位置（使用多种选择器）
                             iframe_rect = await tab.evaluate(r"""
                                 (function() {
-                                    const iframes = document.querySelectorAll('iframe[src*="challenges.cloudflare.com"]');
-                                    for (const iframe of iframes) {
-                                        const rect = iframe.getBoundingClientRect();
-                                        if (rect.width > 0 && rect.height > 0) {
-                                            return {
-                                                x: rect.x,
-                                                y: rect.y,
-                                                width: rect.width,
-                                                height: rect.height
-                                            };
+                                    // 多种选择器尝试定位 Turnstile iframe
+                                    const selectors = [
+                                        'iframe[src*="challenges.cloudflare.com"]',
+                                        'iframe[src*="turnstile"]',
+                                        'iframe[title*="Cloudflare"]',
+                                        'iframe[title*="Widget containing"]',
+                                        'div.cf-turnstile iframe',
+                                        'div[data-sitekey] iframe',
+                                        // 通用 iframe 选择器（最后尝试）
+                                        'iframe'
+                                    ];
+                                    
+                                    for (const sel of selectors) {
+                                        const iframes = document.querySelectorAll(sel);
+                                        for (const iframe of iframes) {
+                                            const rect = iframe.getBoundingClientRect();
+                                            // 检查 iframe 是否可见且尺寸合理（Turnstile 通常是 300x65 左右）
+                                            if (rect.width > 200 && rect.width < 400 && 
+                                                rect.height > 50 && rect.height < 100) {
+                                                return {
+                                                    x: rect.x,
+                                                    y: rect.y,
+                                                    width: rect.width,
+                                                    height: rect.height,
+                                                    selector: sel
+                                                };
+                                            }
+                                        }
+                                    }
+                                    
+                                    // 如果没找到合适尺寸的，返回第一个可见的 iframe
+                                    for (const sel of selectors) {
+                                        const iframes = document.querySelectorAll(sel);
+                                        for (const iframe of iframes) {
+                                            const rect = iframe.getBoundingClientRect();
+                                            if (rect.width > 0 && rect.height > 0) {
+                                                return {
+                                                    x: rect.x,
+                                                    y: rect.y,
+                                                    width: rect.width,
+                                                    height: rect.height,
+                                                    selector: sel
+                                                };
+                                            }
                                         }
                                     }
                                     return null;
@@ -252,15 +296,19 @@ class NewAPIBrowserCheckin:
                                 click_x = iframe_rect["x"] + 30
                                 click_y = iframe_rect["y"] + 25
                                 logger.info(
-                                    f"[{self.account_name}] 发现 Turnstile iframe，"
+                                    f"[{self.account_name}] 发现 Turnstile iframe "
+                                    f"(selector: {iframe_rect.get('selector', 'unknown')}, "
+                                    f"size: {iframe_rect['width']}x{iframe_rect['height']}), "
                                     f"尝试点击坐标 ({click_x}, {click_y})"
                                 )
 
-                                # 使用 nodriver 的鼠标点击（正确方法是 mouse_click）
+                                # 使用 nodriver 的鼠标点击
                                 await tab.mouse_click(click_x, click_y)
                                 turnstile_clicked = True
                                 logger.info(f"[{self.account_name}] 已点击 Turnstile 复选框")
                                 await asyncio.sleep(3)  # 等待验证处理
+                            else:
+                                logger.debug(f"[{self.account_name}] 未找到 Turnstile iframe")
                         except Exception as e:
                             logger.debug(f"[{self.account_name}] 点击 Turnstile 失败: {e}")
 

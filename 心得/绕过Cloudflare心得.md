@@ -176,6 +176,63 @@ await tab.evaluate(f"""
 2. 确保 `headless=False`
 3. 增加超时时间，或等待一段时间后重试
 
+### 坑 4：Cloudflare Turnstile 交互式验证（2025 新增）
+
+**现象：** 页面显示"确认您是真人"复选框，需要手动点击
+
+**原因：** Cloudflare Turnstile 是一种交互式验证，复选框在 iframe 中，普通 JavaScript 无法直接访问
+
+**解决方案：** 使用坐标点击
+
+```python
+async def click_turnstile(tab):
+    """点击 Cloudflare Turnstile 复选框"""
+    # 1. 获取 Turnstile iframe 的位置
+    iframe_rect = await tab.evaluate(r"""
+        (function() {
+            const iframes = document.querySelectorAll('iframe[src*="challenges.cloudflare.com"]');
+            for (const iframe of iframes) {
+                const rect = iframe.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) {
+                    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+                }
+            }
+            return null;
+        })()
+    """)
+    
+    if iframe_rect:
+        # 2. 复选框通常在 iframe 左上角偏移约 (30, 25) 的位置
+        click_x = iframe_rect["x"] + 30
+        click_y = iframe_rect["y"] + 25
+        
+        # 3. 使用 nodriver 的 mouse_click 点击坐标
+        await tab.mouse_click(click_x, click_y)
+        print(f"✅ 已点击 Turnstile 复选框 ({click_x}, {click_y})")
+```
+
+**检测 Turnstile 页面的方法：**
+```python
+# 检查页面是否有 Turnstile 验证
+has_turnstile = await tab.evaluate(r"""
+    (function() {
+        // 检查是否有 Turnstile iframe
+        const iframes = document.querySelectorAll('iframe[src*="challenges.cloudflare.com"]');
+        if (iframes.length > 0) return true;
+        
+        // 检查页面文字
+        const bodyText = document.body?.innerText || '';
+        const cfTexts = ['确认您是真人', '验证您是真人', 'verify you are human'];
+        return cfTexts.some(t => bodyText.toLowerCase().includes(t.toLowerCase()));
+    })()
+""")
+```
+
+**注意事项：**
+- Turnstile 复选框位置是固定的，通常在 iframe 左上角偏移 (30, 25) 像素
+- 点击后需要等待 3-5 秒让验证处理
+- 如果点击后一直转圈，可能是浏览器指纹被标记，需要更换 IP 或优化指纹
+
 ---
 
 ## 📊 浏览行为优化（防止被论坛检测）
