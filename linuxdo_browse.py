@@ -91,27 +91,65 @@ async def main():
         # 获取 cookies
         cookies = account.cookies if account.cookies else None
 
-        adapter = LinuxDOAdapter(
-            username=account.username,
-            password=account.password,
-            cookies=cookies,
-            account_name=account.get_display_name(i),
-            browse_minutes=account.browse_minutes,
-        )
-
+        # 登录重试配置：每次重试都打开新浏览器实例
+        max_login_retries = 5
+        retry_delays = [5, 10, 15, 20, 25]  # 每次重试前等待的秒数
+        
+        login_success = False
+        adapter = None
+        last_error = None
+        
+        for attempt in range(1, max_login_retries + 1):
+            # 每次尝试都创建新的 adapter（新浏览器实例）
+            adapter = LinuxDOAdapter(
+                username=account.username,
+                password=account.password,
+                cookies=cookies,
+                account_name=account.get_display_name(i),
+                browse_minutes=account.browse_minutes,
+            )
+            
+            try:
+                logger.info(f"登录尝试 {attempt}/{max_login_retries}...")
+                login_success = await adapter.login()
+                
+                if login_success:
+                    logger.success(f"登录成功！方式: {adapter._login_method}")
+                    break
+                else:
+                    logger.warning(f"登录尝试 {attempt}/{max_login_retries} 失败")
+                    
+            except Exception as e:
+                last_error = e
+                logger.warning(f"登录尝试 {attempt}/{max_login_retries} 出错: {e}")
+            
+            # 如果不是最后一次尝试，关闭浏览器并等待后重试
+            if attempt < max_login_retries:
+                try:
+                    await adapter.cleanup()
+                    logger.info("浏览器已关闭")
+                except Exception as e:
+                    logger.warning(f"清理资源时出错: {e}")
+                
+                wait_time = retry_delays[attempt - 1]
+                logger.info(f"等待 {wait_time} 秒后打开新浏览器重试...")
+                await asyncio.sleep(wait_time)
+                adapter = None
+        
+        # 检查最终登录结果
+        if not login_success:
+            error_msg = str(last_error)[:50] if last_error else "登录失败"
+            logger.error(f"账号 {account.get_display_name(i)} 登录失败，已重试 {max_login_retries} 次")
+            results.append(f"❌ {account.get_display_name(i)}: {error_msg}")
+            if adapter:
+                try:
+                    await adapter.cleanup()
+                except Exception:
+                    pass
+            continue
+        
+        # 登录成功，执行浏览
         try:
-            # 登录
-            logger.info("开始登录...")
-            login_success = await adapter.login()
-
-            if not login_success:
-                logger.error(f"账号 {account.get_display_name(i)} 登录失败")
-                results.append(f"❌ {account.get_display_name(i)}: 登录失败")
-                continue
-
-            logger.success(f"登录成功！方式: {adapter._login_method}")
-
-            # 浏览帖子
             logger.info("开始浏览帖子...")
             result = await adapter.checkin()
 
@@ -119,7 +157,7 @@ async def main():
             logger.success(f"完成: {result.message}")
 
         except Exception as e:
-            logger.error(f"账号 {account.get_display_name(i)} 出错: {e}")
+            logger.error(f"账号 {account.get_display_name(i)} 浏览出错: {e}")
             logger.error(traceback.format_exc())
             results.append(f"❌ {account.get_display_name(i)}: {str(e)[:50]}")
         finally:
