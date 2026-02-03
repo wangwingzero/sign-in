@@ -157,6 +157,17 @@ class PlatformManager:
 
             logger.info(f"开始签到: {account_name} ({provider_name})")
 
+            # 检查是否需要直接使用浏览器 OAuth（某些站点有 Cloudflare 保护）
+            if provider.bypass_method == "browser_oauth":
+                logger.info(f"[{account_name}] 站点需要浏览器 OAuth 登录")
+                failed_accounts.append({
+                    "account": account,
+                    "provider": provider,
+                    "account_name": account_name,
+                    "original_result": None,
+                })
+                continue
+
             try:
                 result = await self._checkin_newapi(account, provider, account_name)
 
@@ -192,7 +203,17 @@ class PlatformManager:
             # 没有 LinuxDO 账户，直接返回失败结果
             logger.warning("没有配置 LinuxDO 账户，无法进行浏览器回退登录")
             for item in failed_accounts:
-                results.append(item["original_result"])
+                original_result = item.get("original_result")
+                if original_result:
+                    results.append(original_result)
+                else:
+                    # 对于需要浏览器 OAuth 但没有 LinuxDO 账户的情况
+                    results.append(CheckinResult(
+                        platform=f"NewAPI ({item['provider'].name})",
+                        account=item['account_name'],
+                        status=CheckinStatus.FAILED,
+                        message="需要浏览器 OAuth 登录但未配置 LinuxDO 账户",
+                    ))
 
         return results
 
@@ -235,10 +256,18 @@ class PlatformManager:
 
             except Exception as e:
                 logger.error(f"[{account_name}] 浏览器回退签到异常: {e}")
-                # 返回原始失败结果
-                original_result = item["original_result"]
-                original_result.message = f"{original_result.message} (浏览器回退也失败: {e})"
-                results.append(original_result)
+                # 返回原始失败结果或创建新的失败结果
+                original_result = item.get("original_result")
+                if original_result:
+                    original_result.message = f"{original_result.message} (浏览器回退也失败: {e})"
+                    results.append(original_result)
+                else:
+                    results.append(CheckinResult(
+                        platform=f"NewAPI ({provider.name})",
+                        account=account_name,
+                        status=CheckinStatus.FAILED,
+                        message=f"浏览器 OAuth 登录失败: {e}",
+                    ))
 
         return results
 
