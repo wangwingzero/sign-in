@@ -18,9 +18,7 @@
 3. 配置通知渠道（可选）
 4. GitHub Actions 会自动运行（每天 8:00 和 20:00）
 
-### LinuxDO 浏览（仅本地）
-
-> ⚠️ LinuxDO 使用 Cloudflare 防护，**仅支持本地运行**
+### LinuxDO 浏览
 
 ```bash
 # 安装依赖
