@@ -72,13 +72,15 @@ jobs:
           # DEBUG: "true"
           NEWAPI_DEBUG: ${{ github.event.inputs.debug || 'false' }}
           
-          # LinuxDO 账户（用于浏览器回退登录）
+          # LinuxDO 账户（必填 - 自动模式只需要这个！）
           # JSON 格式: [{"username": "email", "password": "pass", "name": "显示名"}]
+          # 自动模式：只配这个，系统自动遍历所有站点 OAuth 签到，无需手动配置每个站点
           LINUXDO_ACCOUNTS: ${{ secrets.LINUXDO_ACCOUNTS }}
           
-          # NewAPI 站点统一配置（支持所有 NewAPI 架构的站点）
+          # NewAPI 站点手动配置（可选 - 不配则自动模式）
+          # 如果设置了，使用预配置的 Cookie 签到（更快，不需要浏览器）
+          # 如果不设置，自动用 LINUXDO_ACCOUNTS 通过 OAuth 登录所有站点
           # JSON 格式: [{"name": "账号名", "provider": "站点ID", "cookies": {"session": "xxx"}, "api_user": "123"}]
-          # 支持的 provider: anyrouter, wong, elysiver, kfcapi, duckcoding, runanytime, neb, zeroliya, mitchll 等
           NEWAPI_ACCOUNTS: ${{ secrets.NEWAPI_ACCOUNTS }}
           
           # 兼容旧配置（如果设置了 ANYROUTER_ACCOUNTS 也会被读取）

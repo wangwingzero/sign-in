@@ -476,6 +476,43 @@ DEFAULT_PROVIDERS: dict[str, dict] = {
         "bypass_method": "waf_cookies",
         "waf_cookie_names": ["acw_tc"],
     },
+    # ===== 以下为新增站点 =====
+    "translate6655": {
+        "domain": "https://translate-api.6655.pp.ua",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "baqi": {
+        "domain": "https://ai.121628.xyz",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "moyu": {
+        "domain": "https://clove.cc.cd",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "muyuan": {
+        "domain": "https://newapi.linuxdo.edu.rs",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "xiaolajiao": {
+        "domain": "https://yyds.215.im",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "ibsgss": {
+        "domain": "https://codex.ibsgss.uk",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "nhh": {
+        "domain": "https://new.123nhh.xyz",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "yx": {
+        "domain": "https://api.dx001.ggff.net",
+        "sign_in_path": "/api/user/checkin",
+    },
+    "zeabur": {
+        "domain": "https://openai.api-test.us.ci",
+        "sign_in_path": "/api/user/checkin",
+    },
 }
 
 
@@ -493,7 +530,12 @@ class AppConfig:
 
     @classmethod
     def load_from_env(cls) -> "AppConfig":
-        """从环境变量加载完整配置"""
+        """从环境变量加载完整配置
+
+        两种使用模式：
+        1. 手动模式：设置 NEWAPI_ACCOUNTS（指定每个站点的 Cookie）
+        2. 自动模式：只设置 LINUXDO_ACCOUNTS（系统自动遍历所有站点 OAuth 签到）
+        """
         wong_accounts = cls._load_wong_accounts()
         elysiver_accounts = cls._load_elysiver_accounts()
         kfcapi_accounts = cls._load_kfcapi_accounts()
@@ -501,6 +543,16 @@ class AppConfig:
         linuxdo_accounts = cls._load_linuxdo_accounts()
         anyrouter_accounts = cls._load_anyrouter_accounts()
         providers = cls._load_providers()
+
+        # 提示运行模式
+        if not anyrouter_accounts and linuxdo_accounts:
+            waf_count = sum(1 for p in DEFAULT_PROVIDERS.values() if p.get("bypass_method") == "waf_cookies")
+            auto_count = len(DEFAULT_PROVIDERS) - waf_count
+            logger.info(
+                f"自动模式: NEWAPI_ACCOUNTS 未配置，将使用 LINUXDO_ACCOUNTS "
+                f"自动 OAuth 签到 {auto_count} 个站点"
+            )
+
         return cls(
             anyrouter_accounts=anyrouter_accounts,
             wong_accounts=wong_accounts,

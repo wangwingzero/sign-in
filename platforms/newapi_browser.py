@@ -202,16 +202,15 @@ class NewAPIBrowserCheckin:
         """等待 Cloudflare 挑战完成（支持 5 秒盾和 Turnstile 验证）
 
         核心策略：
-        1. 先等 8 秒让非交互式挑战（5 秒盾）自动完成
-        2. 如果还在 CF 页面，通过 iframe[src*="challenges.cloudflare.com"] 精确定位 Turnstile
-        3. 点击 iframe 内 checkbox 的位置（iframe 左上角偏移约 30, 30）
-        4. 最多点击 5 次，每次间隔 5 秒等待验证结果
+        1. 先等 3 秒让非交互式挑战（5 秒盾）自动完成
+        2. 如果还在 CF 页面，多种方式定位 Turnstile checkbox 并点击
+        3. 最多点击 5 次，每次间隔 5 秒等待验证结果
         """
         logger.info(f"[{self.account_name}] 检测 Cloudflare 挑战...")
         start_time = asyncio.get_event_loop().time()
         turnstile_click_count = 0
         max_turnstile_clicks = 5
-        # 先等一段时间让非交互式挑战自动完成
+        # 先等一小段时间让非交互式挑战自动完成
         initial_wait_done = False
 
         while asyncio.get_event_loop().time() - start_time < timeout:
@@ -219,24 +218,32 @@ class NewAPIBrowserCheckin:
                 title = await tab.evaluate("document.title")
                 title_lower = title.lower() if title else ""
 
-                # 检测是否仍在 Cloudflare 挑战页面
-                cf_indicators = ["just a moment", "checking your browser", "please wait", "verifying", "请稍候"]
+                # 检测是否仍在 Cloudflare 挑战页面（标题匹配）
+                cf_indicators = [
+                    "just a moment", "checking your browser", "please wait",
+                    "verifying", "checking", "challenge",
+                    "请稍候", "验证", "确认",
+                ]
                 is_cf_title = any(ind in title_lower for ind in cf_indicators)
 
-                # 检测 Turnstile iframe 或容器是否存在
+                # 检测 Turnstile iframe 或容器是否存在（DOM 匹配）
                 has_cf_element = await tab.evaluate(r"""
                     (function() {
-                        // 方法1: 查找 Cloudflare challenges iframe（最可靠）
+                        // 方法1: 查找任何 cloudflare 相关的 iframe
                         const iframes = document.querySelectorAll('iframe');
                         for (const iframe of iframes) {
-                            const src = iframe.src || '';
-                            if (src.includes('challenges.cloudflare.com')) return true;
+                            const src = (iframe.src || '').toLowerCase();
+                            if (src.includes('cloudflare')) return true;
                         }
                         // 方法2: 查找 Turnstile 容器
-                        if (document.querySelector('.cf-turnstile, div[data-sitekey]')) return true;
-                        // 方法3: 查找验证文字
+                        if (document.querySelector('.cf-turnstile, div[data-sitekey], #cf-turnstile, #challenge-running, #challenge-stage')) return true;
+                        // 方法3: 查找验证相关文字（覆盖中英文）
                         const bodyText = document.body?.innerText || '';
-                        const cfTexts = ['确认您是真人', '验证您是真人', 'verify you are human'];
+                        const cfTexts = [
+                            '确认您是真人', '验证您是真人', '验证您是否是真人',
+                            '请完成以下操作', '需要先检查您的连接',
+                            'verify you are human', 'checking if the site connection is secure'
+                        ];
                         return cfTexts.some(t => bodyText.toLowerCase().includes(t.toLowerCase()));
                     })()
                 """)
@@ -248,46 +255,82 @@ class NewAPIBrowserCheckin:
                     await self._save_debug_screenshot(tab, "cf_passed")
                     return True
 
-                # 前 8 秒只等待，不点击（让非交互式挑战自动完成）
+                # 前 3 秒只等待，不点击（让非交互式挑战自动完成）
                 elapsed = asyncio.get_event_loop().time() - start_time
-                if not initial_wait_done and elapsed < 8:
+                if not initial_wait_done and elapsed < 3:
                     logger.debug(f"[{self.account_name}] 等待非交互式挑战自动完成... ({elapsed:.0f}s)")
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(1)
                     continue
                 initial_wait_done = True
 
                 if is_cf_page and turnstile_click_count < max_turnstile_clicks:
-                    # 通过 iframe 精确定位 Turnstile checkbox
+                    # 多种方式定位 Turnstile checkbox
                     iframe_rect = await tab.evaluate(r"""
                         (function() {
-                            // 优先: 查找 challenges.cloudflare.com 的 iframe
                             const iframes = document.querySelectorAll('iframe');
+
+                            // 策略1: 查找 src 包含 cloudflare 的 iframe（最可靠）
                             for (const iframe of iframes) {
-                                const src = iframe.src || '';
-                                if (src.includes('challenges.cloudflare.com')) {
+                                const src = (iframe.src || '').toLowerCase();
+                                if (src.includes('cloudflare')) {
                                     const rect = iframe.getBoundingClientRect();
                                     if (rect.width > 0 && rect.height > 0) {
                                         return [rect.x, rect.y, rect.width, rect.height, 'cf-iframe'];
                                     }
                                 }
                             }
-                            // 备选: .cf-turnstile 容器
+
+                            // 策略2: .cf-turnstile / div[data-sitekey] 容器
                             const container = document.querySelector('.cf-turnstile') ||
-                                              document.querySelector('div[data-sitekey]');
+                                              document.querySelector('div[data-sitekey]') ||
+                                              document.querySelector('#cf-turnstile') ||
+                                              document.querySelector('#challenge-stage');
                             if (container) {
                                 const rect = container.getBoundingClientRect();
                                 if (rect.width > 0 && rect.height > 0) {
                                     return [rect.x, rect.y, rect.width, rect.height, 'cf-container'];
                                 }
                             }
-                            // 最后: 查找任何 Turnstile 相关的 iframe
+
+                            // 策略3: 查找 Turnstile 尺寸的 iframe（宽 280-350, 高 50-80）
                             for (const iframe of iframes) {
                                 const rect = iframe.getBoundingClientRect();
-                                if (rect.width >= 200 && rect.width <= 400 &&
-                                    rect.height >= 50 && rect.height <= 100) {
+                                if (rect.width >= 280 && rect.width <= 350 &&
+                                    rect.height >= 50 && rect.height <= 80) {
                                     return [rect.x, rect.y, rect.width, rect.height, 'size-match-iframe'];
                                 }
                             }
+
+                            // 策略4: 放宽尺寸匹配 — 任何可见的小 iframe
+                            for (const iframe of iframes) {
+                                const rect = iframe.getBoundingClientRect();
+                                if (rect.width >= 200 && rect.width <= 500 &&
+                                    rect.height >= 40 && rect.height <= 120 &&
+                                    rect.y > 0) {
+                                    return [rect.x, rect.y, rect.width, rect.height, 'any-small-iframe'];
+                                }
+                            }
+
+                            // 策略5: 在托管挑战页面上，查找 checkbox 容器
+                            // 托管页面整页都是 CF 挑战，checkbox 在页面中部偏上
+                            const bodyText = document.body?.innerText || '';
+                            if (bodyText.includes('确认您是真人') || bodyText.includes('verify you are human')) {
+                                // 查找包含复选框的 label 或 span
+                                const labels = document.querySelectorAll('label, span, div');
+                                for (const el of labels) {
+                                    const text = (el.innerText || '').trim();
+                                    if (text === '确认您是真人' || text === 'Verify you are human') {
+                                        const rect = el.getBoundingClientRect();
+                                        if (rect.width > 0 && rect.height > 0) {
+                                            return [rect.x, rect.y, rect.width, rect.height, 'checkbox-label'];
+                                        }
+                                    }
+                                }
+                                // 最后兜底：返回页面上 checkbox 区域的大致位置
+                                // 托管挑战页面的 checkbox 通常在 (215, 175) 附近，宽 170, 高 25
+                                return [215, 170, 170, 30, 'managed-page-guess'];
+                            }
+
                             return null;
                         })()
                     """)
@@ -300,9 +343,14 @@ class NewAPIBrowserCheckin:
                             h = self._to_float(iframe_rect[3])
                             method = iframe_rect[4] if len(iframe_rect) > 4 else 'N/A'
 
-                            # Turnstile checkbox 在 iframe 内左侧偏移约 30px, 垂直居中
-                            click_x = x + 30
-                            click_y = y + h / 2
+                            # checkbox 在元素内左侧偏移约 30px, 垂直居中
+                            # 对于 managed-page-guess 和 checkbox-label，点击元素左侧
+                            if method in ('checkbox-label', 'managed-page-guess'):
+                                click_x = x + 15
+                                click_y = y + h / 2
+                            else:
+                                click_x = x + 30
+                                click_y = y + h / 2
 
                             logger.info(
                                 f"[{self.account_name}] 发现 Turnstile "
@@ -319,37 +367,32 @@ class NewAPIBrowserCheckin:
                     else:
                         logger.debug(f"[{self.account_name}] 未找到 Turnstile iframe/容器，等待...")
 
-                    if self._debug:
-                        await self._save_debug_screenshot(tab, "cf_waiting")
+                    # 注意：CF 冻结页面上截图会挂起 60 秒+，不在循环中截图
             except Exception as e:
                 logger.debug(f"[{self.account_name}] 检查页面状态出错: {e}")
             await asyncio.sleep(2)
 
         logger.warning(f"[{self.account_name}] Cloudflare 验证超时")
-        await self._save_debug_screenshot(tab, "cf_timeout")
         return False
 
-    async def _wait_for_cloudflare_with_retry(self, tab, max_retries: int = 3) -> bool:
-        """带重试的 Cloudflare 验证（核心策略：多次尝试）
+    async def _wait_for_cloudflare_with_retry(self, tab, max_retries: int = 5) -> bool:
+        """带重试的 Cloudflare 验证（核心策略：多刷新多尝试，nodriver 有概率绕过）
 
-        根据心得文档：碰到 CF 的核心就是多尝试几次
-        使用指数退避策略：5s -> 15s -> 30s
+        碰到 CF 的核心就是多尝试几次，每次刷新页面让 nodriver 有新的机会绕过。
+        短等待 + 多重试 + 快刷新 = 高成功率。
 
         Args:
             tab: nodriver 标签页
-            max_retries: 最大重试次数（默认 3 次）
+            max_retries: 最大重试次数（默认 5 次）
 
         Returns:
             是否通过 Cloudflare 验证
         """
-        # 指数退避等待时间（秒）
-        retry_delays = [5, 15, 30]
-
         for attempt in range(max_retries):
             logger.info(f"[{self.account_name}] Cloudflare 验证尝试 {attempt + 1}/{max_retries}...")
 
-            # 第一次尝试给更长超时（含 8 秒初始等待），后续稍短
-            timeout = 60 if attempt == 0 else 40
+            # 每次等待 15-20 秒，不要太长（CF 要么很快过，要么需要刷新重来）
+            timeout = 20 if attempt == 0 else 15
 
             # 等待 Cloudflare 验证
             cf_passed = await self._wait_for_cloudflare(tab, timeout=timeout)
@@ -364,18 +407,18 @@ class NewAPIBrowserCheckin:
                 logger.error(f"[{self.account_name}] Cloudflare 验证失败，已重试 {max_retries} 次")
                 return False
 
-            # 指数退避等待
-            wait_time = retry_delays[min(attempt, len(retry_delays) - 1)]
+            # 短暂等待后刷新页面重来（核心：让 nodriver 有新的机会绕过 CF）
+            wait_time = 3 + attempt * 2  # 3s, 5s, 7s, 9s 递增
             logger.warning(
-                f"[{self.account_name}] Cloudflare 验证失败，"
-                f"等待 {wait_time}s 后重试（{attempt + 2}/{max_retries}）..."
+                f"[{self.account_name}] Cloudflare 未通过，"
+                f"等待 {wait_time}s 后刷新重试（{attempt + 2}/{max_retries}）..."
             )
             await asyncio.sleep(wait_time)
 
-            # 刷新页面重新尝试
+            # 刷新页面，给 nodriver 一次全新的机会
             logger.info(f"[{self.account_name}] 刷新页面...")
             await tab.reload()
-            await asyncio.sleep(5)  # 等待页面开始加载
+            await asyncio.sleep(3)  # 等待页面开始加载
 
         return False
 
@@ -592,7 +635,7 @@ class NewAPIBrowserCheckin:
         await asyncio.sleep(5)
         await self._log_page_info(tab, "provider_login_page")
         await self._save_debug_screenshot(tab, "provider_login_page")
-        await self._wait_for_cloudflare(tab, timeout=15)
+        await self._wait_for_cloudflare_with_retry(tab)
 
         # 检查是否已经登录
         current_url = tab.target.url if hasattr(tab, "target") else ""
@@ -755,6 +798,36 @@ class NewAPIBrowserCheckin:
                             }
                         }
 
+                        // 策略4: Wong 等站点 — 按钮内有图标但文字不含 "LinuxDO"
+                        // 查找包含"使用"+"继续"文字的按钮（图标按钮的 innerText 可能是 "使用 继续"）
+                        for (const el of allClickable) {
+                            const text = (el.innerText || el.textContent || '').replace(/\s+/g, '').trim();
+                            if (/使用.*继续/.test(text) || /continue/i.test(text)) {
+                                // 验证这个按钮内确实有图标（避免误触其他"继续"按钮）
+                                if (el.querySelector('img, svg') || el.className.includes('tertiary')) {
+                                    el.click();
+                                    return 'clicked icon-button: ' + (el.innerText || '').trim().substring(0, 30);
+                                }
+                            }
+                        }
+
+                        // 策略5: 查找所有按钮内的图片，检查 alt/title 属性
+                        const allBtns = document.querySelectorAll('button, a, [role="button"]');
+                        for (const btn of allBtns) {
+                            const imgs = btn.querySelectorAll('img');
+                            for (const img of imgs) {
+                                const alt = (img.alt || '').toLowerCase();
+                                const title = (img.title || '').toLowerCase();
+                                const src = (img.src || '').toLowerCase();
+                                if (alt.includes('linux') || title.includes('linux') ||
+                                    src.includes('linux') || src.includes('oauth') ||
+                                    src.includes('connect')) {
+                                    btn.click();
+                                    return 'clicked img-btn: alt=' + alt + ' src=' + src.substring(0, 40);
+                                }
+                            }
+                        }
+
                         return null;
                     })()
                 """)
@@ -771,8 +844,57 @@ class NewAPIBrowserCheckin:
             await asyncio.sleep(1)
 
         if not clicked:
-            logger.warning(f"[{self.account_name}] 未找到 LinuxDO OAuth 按钮")
-            await self._save_debug_screenshot(tab, "oauth_button_not_found")
+            # 登录页没找到 OAuth 按钮，尝试注册页（Wong 等站点的 LinuxDO 入口在注册页）
+            register_url = f"{self.provider.domain}/register"
+            logger.info(f"[{self.account_name}] 登录页未找到 OAuth 按钮，尝试注册页: {register_url}")
+            await tab.get(register_url)
+            await asyncio.sleep(3)
+            await self._save_debug_screenshot(tab, "register_page")
+
+            # 在注册页重新查找 OAuth 按钮（同样的检测逻辑）
+            for attempt in range(3):
+                try:
+                    clicked_result = await tab.evaluate(r"""
+                        (function() {
+                            const links = document.querySelectorAll('a[href*="linuxdo"], a[href*="oauth/linuxdo"]');
+                            for (const link of links) {
+                                link.click();
+                                return 'clicked link: ' + (link.href || '').substring(0, 60);
+                            }
+                            const allClickable = document.querySelectorAll('button, a, [role="button"], div[onclick], span[onclick]');
+                            const patterns = [
+                                /linux\s*do/i, /使用.*linux/i, /通过.*linux/i,
+                                /continue.*linux/i, /login.*linux/i
+                            ];
+                            for (const el of allClickable) {
+                                const text = (el.innerText || el.textContent || '').trim();
+                                for (const pattern of patterns) {
+                                    if (pattern.test(text)) {
+                                        el.click();
+                                        return 'clicked text: ' + text.substring(0, 40);
+                                    }
+                                }
+                            }
+                            const icons = document.querySelectorAll('img[src*="linuxdo"], svg[class*="linuxdo"]');
+                            for (const icon of icons) {
+                                const parent = icon.closest('button, a, [role="button"]') || icon.parentElement;
+                                if (parent) { parent.click(); return 'clicked icon parent'; }
+                            }
+                            return null;
+                        })()
+                    """)
+                    if clicked_result:
+                        logger.info(f"[{self.account_name}] 注册页找到 OAuth: {clicked_result}")
+                        await self._save_debug_screenshot(tab, "register_oauth_clicked")
+                        clicked = True
+                        break
+                except Exception as e:
+                    logger.debug(f"[{self.account_name}] 注册页查找 OAuth 按钮出错: {e}")
+                await asyncio.sleep(1)
+
+            if not clicked:
+                logger.warning(f"[{self.account_name}] 登录页和注册页均未找到 LinuxDO OAuth 按钮")
+                await self._save_debug_screenshot(tab, "oauth_button_not_found")
 
         # 等待 OAuth 授权
         logger.info(f"[{self.account_name}] 等待 OAuth 授权...")
@@ -827,49 +949,74 @@ class NewAPIBrowserCheckin:
                         logger.debug(f"[{self.account_name}] 获取按钮信息失败: {e}")
 
                 try:
-                    # 改进的按钮查找逻辑：支持多种匹配方式
-                    clicked = await tab.evaluate(r"""
+                    # 三种方式尝试点击"允许"按钮
+                    # 策略1: JS click + 直接导航 href（最可靠）
+                    # 策略2: mouse_click 物理点击（备选）
+                    click_result = await tab.evaluate(r"""
                         (function() {
-                            // 查找所有可能的按钮元素
-                            const buttons = document.querySelectorAll('button, a, input[type="submit"], [role="button"]');
+                            const elements = document.querySelectorAll('a, button, input[type="submit"], [role="button"]');
 
-                            for (const btn of buttons) {
-                                const text = (btn.innerText || btn.value || btn.textContent || '').trim();
-                                const className = btn.className || '';
-
-                                // 匹配"允许"按钮（可能有各种写法）
-                                if (/^允许$/.test(text) ||
-                                    /允许/.test(text) ||
-                                    /authorize/i.test(text) ||
-                                    /allow/i.test(text) ||
-                                    /confirm/i.test(text) ||
-                                    /accept/i.test(text)) {
-                                    btn.click();
-                                    return 'clicked button: ' + text;
-                                }
-
-                                // 匹配红色/危险按钮（LinuxDO 授权页面的允许按钮是红色的 btn-danger）
-                                if (className.includes('btn-danger') || className.includes('btn-primary')) {
-                                    btn.click();
-                                    return 'clicked danger/primary button: ' + text;
+                            // 查找"允许"按钮
+                            let target = null;
+                            for (const el of elements) {
+                                const text = (el.innerText || el.value || el.textContent || '').trim();
+                                if (/允许/.test(text) || /authorize/i.test(text) ||
+                                    /allow/i.test(text) || /accept/i.test(text)) {
+                                    target = el;
+                                    break;
                                 }
                             }
 
-                            // 如果还没找到，尝试查找表单提交按钮
-                            const form = document.querySelector('form');
+                            // 兜底：红色按钮（LinuxDO 授权页的允许按钮是红色）
+                            if (!target) {
+                                for (const el of elements) {
+                                    const cls = el.className || '';
+                                    if (cls.includes('btn-danger') || cls.includes('bg-red')) {
+                                        target = el;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (!target) return null;
+
+                            const text = (target.innerText || '').trim().substring(0, 10);
+
+                            // 尝试1: 如果是 <a> 标签且有 href，直接导航（最可靠）
+                            if (target.tagName === 'A' && target.href && !target.href.startsWith('javascript:')) {
+                                const href = target.href;
+                                window.location.href = href;
+                                return ['navigated', text, href.substring(0, 80)];
+                            }
+
+                            // 尝试2: JS click
+                            target.click();
+
+                            // 尝试3: 如果是 form 内的按钮，提交表单
+                            const form = target.closest('form');
                             if (form) {
-                                const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
-                                if (submitBtn) {
-                                    submitBtn.click();
-                                    return 'clicked form submit: ' + (submitBtn.innerText || submitBtn.value || '');
-                                }
+                                form.submit();
+                                return ['form-submitted', text, ''];
                             }
 
-                            return null;
+                            return ['clicked', text, ''];
                         })()
                     """)
-                    if clicked:
-                        logger.info(f"[{self.account_name}] {clicked}")
+                    if click_result and isinstance(click_result, (list, tuple)):
+                        action = click_result[0] if len(click_result) > 0 else '?'
+                        text = click_result[1] if len(click_result) > 1 else '?'
+                        detail = click_result[2] if len(click_result) > 2 else ''
+                        # 处理 nodriver 的包装格式
+                        if isinstance(action, dict):
+                            action = action.get('value', action)
+                        if isinstance(text, dict):
+                            text = text.get('value', text)
+                        if isinstance(detail, dict):
+                            detail = detail.get('value', detail)
+                        logger.info(
+                            f"[{self.account_name}] 授权按钮操作: {action} "
+                            f"(按钮: {text}) {detail}"
+                        )
                         await asyncio.sleep(3)
                     else:
                         logger.warning(f"[{self.account_name}] 未找到允许按钮")
@@ -899,23 +1046,101 @@ class NewAPIBrowserCheckin:
         session_cookie = None
         api_user = None
 
+        # 提取 provider 域名用于过滤 cookie
+        provider_domain = self.provider.domain.replace("https://", "").replace("http://", "")
+
         try:
             import nodriver.cdp.network as cdp_network
 
-            all_cookies = await tab.send(cdp_network.get_all_cookies())
+            # 先确保在 provider 域名上（触发 session cookie 设置）
+            current_url = tab.target.url if hasattr(tab, "target") else ""
+            if provider_domain not in current_url:
+                logger.info(f"[{self.account_name}] 导航到站点主页确保 session 设置...")
+                await tab.get(self.provider.domain)
+                await asyncio.sleep(3)
 
-            # Debug: 打印所有 cookies
-            if self._debug:
-                cookie_names = [c.name for c in all_cookies]
-                logger.debug(f"[{self.account_name}] 所有 cookies: {cookie_names}")
+            # 重试获取 session（有些站点 cookie 设置有延迟）
+            for attempt in range(3):
+                all_cookies = await tab.send(cdp_network.get_all_cookies())
 
-            for cookie in all_cookies:
-                if cookie.name == "session":
-                    session_cookie = cookie.value
-                    logger.info(f"[{self.account_name}] 获取到 session: {session_cookie[:30]}...")
-                elif cookie.name == self.provider.api_user_key:
-                    api_user = cookie.value
-                    logger.info(f"[{self.account_name}] 获取到 api_user (cookie): {api_user}")
+                # Debug: 打印 provider 域名相关的 cookies
+                if self._debug:
+                    provider_cookies = [
+                        f"{c.name}={c.value[:20]}... (domain={c.domain})"
+                        for c in all_cookies if provider_domain in (c.domain or "")
+                    ]
+                    all_names = [c.name for c in all_cookies]
+                    logger.debug(f"[{self.account_name}] 所有 cookies: {all_names}")
+                    logger.debug(f"[{self.account_name}] {provider_domain} cookies: {provider_cookies}")
+
+                # 按 provider 域名过滤，查找 session cookie
+                # NewAPI 站点的 session cookie 可能叫不同的名字
+                session_cookie_names = ["session", "_session", "connect.sid", "token", "auth_token"]
+                for cookie in all_cookies:
+                    cookie_domain = cookie.domain or ""
+                    # 匹配 provider 域名（包括子域名）
+                    if provider_domain not in cookie_domain and cookie_domain.lstrip(".") not in provider_domain:
+                        continue
+                    if cookie.name in session_cookie_names and cookie.value:
+                        session_cookie = cookie.value
+                        logger.info(f"[{self.account_name}] 获取到 session ({cookie.name}): {session_cookie[:30]}...")
+                    elif cookie.name == self.provider.api_user_key and cookie.value:
+                        api_user = cookie.value
+                        logger.info(f"[{self.account_name}] 获取到 api_user (cookie): {api_user}")
+
+                if session_cookie:
+                    break
+
+                # 没找到 session，等一下再试
+                if attempt < 2:
+                    logger.debug(f"[{self.account_name}] 未找到 session cookie，等待重试... ({attempt + 1}/3)")
+                    await asyncio.sleep(2)
+
+            # 仍然没有 session？尝试直接触发 OAuth 登录（适用于 Wong 等注册后需要额外登录的站点）
+            if not session_cookie:
+                logger.info(f"[{self.account_name}] 未找到 session，尝试直接触发 OAuth 登录...")
+                # 常见的 NewAPI OAuth 登录路径
+                oauth_paths = ["/oauth/linuxdo", "/api/oauth/linuxdo", "/auth/linuxdo"]
+                for oauth_path in oauth_paths:
+                    try:
+                        oauth_url = f"{self.provider.domain}{oauth_path}"
+                        logger.info(f"[{self.account_name}] 尝试直接访问: {oauth_url}")
+                        await tab.get(oauth_url)
+                        await asyncio.sleep(5)
+
+                        # 检查是否到了 LinuxDO 授权页（自动同意）
+                        current_url = tab.target.url if hasattr(tab, "target") else ""
+                        if "linux.do" in current_url and "authorize" in current_url.lower():
+                            # 点击允许
+                            await tab.evaluate(r"""
+                                (function() {
+                                    const links = document.querySelectorAll('a');
+                                    for (const a of links) {
+                                        if (/允许/.test(a.innerText) && a.href) {
+                                            window.location.href = a.href;
+                                            return true;
+                                        }
+                                    }
+                                    return false;
+                                })()
+                            """)
+                            await asyncio.sleep(5)
+
+                        # 再次检查 session cookie
+                        all_cookies = await tab.send(cdp_network.get_all_cookies())
+                        for cookie in all_cookies:
+                            cookie_domain = cookie.domain or ""
+                            if provider_domain not in cookie_domain and cookie_domain.lstrip(".") not in provider_domain:
+                                continue
+                            if cookie.name == "session" and cookie.value:
+                                session_cookie = cookie.value
+                                logger.success(f"[{self.account_name}] 直接 OAuth 登录获取到 session: {session_cookie[:30]}...")
+                                break
+
+                        if session_cookie:
+                            break
+                    except Exception as e:
+                        logger.debug(f"[{self.account_name}] 尝试 {oauth_path} 失败: {e}")
 
             # 如果没有从 cookie 获取到 api_user，尝试从 localStorage 获取
             if not api_user:

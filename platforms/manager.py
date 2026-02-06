@@ -10,6 +10,7 @@
 - 支持 401/403 失败后自动使用浏览器 OAuth 重试
 """
 
+import asyncio
 import json
 import ssl
 import tempfile
@@ -130,10 +131,161 @@ class PlatformManager:
         return results
 
     async def _run_all_newapi(self) -> list[CheckinResult]:
-        """运行所有 NewAPI 站点签到（支持 Cookie + API，失败后浏览器回退）"""
-        if not self.config.anyrouter_accounts:
-            return []
+        """运行所有 NewAPI 站点签到
 
+        两种模式：
+        1. 手动模式：NEWAPI_ACCOUNTS 已配置 → 按账号签到（Cookie+API，失败回退OAuth）
+        2. 自动模式：NEWAPI_ACCOUNTS 未配置但有 LINUXDO_ACCOUNTS → 自动遍历所有站点 OAuth 签到
+        """
+        if self.config.anyrouter_accounts:
+            return await self._run_newapi_with_accounts()
+        elif self._linuxdo_accounts:
+            logger.info("NEWAPI_ACCOUNTS 未配置，使用 LINUXDO_ACCOUNTS 自动发现并签到所有站点")
+            return await self._run_newapi_auto_oauth()
+        return []
+
+    async def _run_newapi_auto_oauth(self) -> list[CheckinResult]:
+        """自动模式：用 LinuxDO 账号遍历所有 NewAPI 站点，自动 OAuth 登录签到
+
+        用户只需配置 LINUXDO_ACCOUNTS，系统自动：
+        1. 遍历 DEFAULT_PROVIDERS 中所有站点
+        2. 优先使用缓存的 Cookie 签到（快速）
+        3. 无缓存或 Cookie 过期时，自动使用浏览器 OAuth 获取新 Cookie
+        4. 签到成功后缓存 Cookie，下次直接用
+        """
+        from platforms.newapi_browser import browser_checkin_newapi
+        from utils.config import ProviderConfig
+
+        results = []
+
+        # 使用第一个 LinuxDO 账号
+        linuxdo_account = self._linuxdo_accounts[0]
+        linuxdo_username = linuxdo_account["username"]
+        linuxdo_password = linuxdo_account["password"]
+        linuxdo_name = linuxdo_account.get("name", linuxdo_username)
+
+        logger.info(f"自动模式: 使用 LinuxDO 账号 [{linuxdo_name}] 遍历所有站点")
+
+        # 筛选可用的 provider（跳过需要 WAF cookies 的特殊站点）
+        providers_to_test = {}
+        for name, config_data in DEFAULT_PROVIDERS.items():
+            if config_data.get("bypass_method") == "waf_cookies":
+                logger.debug(f"跳过 WAF 站点: {name}")
+                continue
+            providers_to_test[name] = ProviderConfig.from_dict(name, config_data)
+
+        logger.info(f"共 {len(providers_to_test)} 个站点待签到")
+
+        # 统计需要浏览器 OAuth 的站点（无缓存或缓存失效）
+        need_oauth = []
+
+        for provider_name, provider in providers_to_test.items():
+            account_name = f"{linuxdo_name}_{provider_name}"
+
+            # 1. 优先尝试缓存的 Cookie
+            cached = self._cookie_cache.get(provider_name, account_name)
+            if cached:
+                logger.info(f"[{account_name}] 发现缓存Cookie，尝试Cookie+API签到...")
+                try:
+                    cached_account = AnyRouterAccount(
+                        cookies={"session": cached["session"]},
+                        api_user=cached["api_user"],
+                        provider=provider_name,
+                        name=account_name,
+                    )
+                    result = await self._checkin_newapi(cached_account, provider, account_name)
+
+                    if result.status == CheckinStatus.SUCCESS:
+                        result.message = f"{result.message} (缓存Cookie)"
+                        if result.details is None:
+                            result.details = {}
+                        result.details["login_method"] = "cached_cookie"
+                        results.append(result)
+                        logger.success(f"[{account_name}] 缓存Cookie签到成功！")
+                        continue
+
+                    # Cookie 过期，清除缓存，需要 OAuth
+                    msg = result.message or ""
+                    if "401" in msg or "403" in msg or "过期" in msg:
+                        logger.warning(f"[{account_name}] 缓存Cookie已失效，需要重新OAuth")
+                        self._cookie_cache.invalidate(provider_name, account_name)
+                    else:
+                        logger.warning(f"[{account_name}] 签到失败: {msg}")
+                        results.append(result)
+                        continue
+                except Exception as e:
+                    logger.warning(f"[{account_name}] 缓存Cookie签到异常: {e}")
+                    self._cookie_cache.invalidate(provider_name, account_name)
+
+            # 2. 无缓存或缓存失效，标记为需要 OAuth
+            need_oauth.append({
+                "provider": provider,
+                "provider_name": provider_name,
+                "account_name": account_name,
+            })
+
+        # 3. 批量处理需要 OAuth 的站点（每个站点最多 3 分钟）
+        SITE_TIMEOUT = 180  # 单站点超时：3 分钟
+        if need_oauth:
+            logger.info(f"需要浏览器OAuth登录: {len(need_oauth)} 个站点（每站限时 {SITE_TIMEOUT}s）")
+
+            for idx, item in enumerate(need_oauth):
+                provider = item["provider"]
+                provider_name = item["provider_name"]
+                account_name = item["account_name"]
+
+                logger.info(f"[{idx+1}/{len(need_oauth)}] [{account_name}] 尝试浏览器 OAuth 登录...")
+
+                try:
+                    result = await asyncio.wait_for(
+                        browser_checkin_newapi(
+                            provider_name=provider_name,
+                            linuxdo_username=linuxdo_username,
+                            linuxdo_password=linuxdo_password,
+                            cookies=None,
+                            api_user=None,
+                            account_name=account_name,
+                        ),
+                        timeout=SITE_TIMEOUT,
+                    )
+
+                    if result.status == CheckinStatus.SUCCESS:
+                        logger.success(f"[{account_name}] OAuth 签到成功！")
+                        # 缓存新 Cookie
+                        if result.details:
+                            cached_session = result.details.pop("_cached_session", None)
+                            cached_api_user = result.details.pop("_cached_api_user", None)
+                            if cached_session and cached_api_user:
+                                self._cookie_cache.save(
+                                    provider_name, account_name, cached_session, cached_api_user
+                                )
+                                logger.success(f"[{account_name}] 新Cookie已缓存")
+                    else:
+                        logger.warning(f"[{account_name}] OAuth 签到失败: {result.message}")
+
+                    results.append(result)
+
+                except asyncio.TimeoutError:
+                    logger.error(f"[{account_name}] 超时（>{SITE_TIMEOUT}s），跳过")
+                    results.append(CheckinResult(
+                        platform=f"NewAPI ({provider_name})",
+                        account=account_name,
+                        status=CheckinStatus.FAILED,
+                        message=f"OAuth 超时（>{SITE_TIMEOUT}s）",
+                    ))
+                except Exception as e:
+                    logger.error(f"[{account_name}] OAuth 签到异常: {e}")
+                    results.append(CheckinResult(
+                        platform=f"NewAPI ({provider_name})",
+                        account=account_name,
+                        status=CheckinStatus.FAILED,
+                        message=f"OAuth 异常: {str(e)}",
+                    ))
+
+        return results
+
+    async def _run_newapi_with_accounts(self) -> list[CheckinResult]:
+        """手动模式：使用 NEWAPI_ACCOUNTS 中预配置的账号签到"""
         results = []
         # 记录需要浏览器回退的账户
         failed_accounts = []
