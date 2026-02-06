@@ -134,14 +134,41 @@ jobs:
           BARK_KEY: ${{ secrets.BARK_KEY }}
           BARK_SERVER: ${{ secrets.BARK_SERVER }}
         run: |
+          set -o pipefail
           # 使用 xvfb-run 启动，模拟显示器绕过 Cloudflare headless 检测
           # 只运行 newapi 签到，不运行 LinuxDO 浏览（浏览帖子用 linuxdo-browse.yml）
           if [ -n "${{ github.event.inputs.platform }}" ]; then
-            xvfb-run --server-args="-screen 0 1920x1080x24" uv run python main.py --platform ${{ github.event.inputs.platform }}
+            xvfb-run --server-args="-screen 0 1920x1080x24" uv run python main.py --platform ${{ github.event.inputs.platform }} 2>&1 | tee run_newapi.log
           else
-            xvfb-run --server-args="-screen 0 1920x1080x24" uv run python main.py --platform newapi
+            xvfb-run --server-args="-screen 0 1920x1080x24" uv run python main.py --platform newapi 2>&1 | tee run_newapi.log
           fi
 
+      - name: Append runtime summary
+        if: always()
+        run: |
+          {
+            echo "## NewAPI Runtime Summary"
+            echo
+            if grep -q "AUTO_OAUTH_SUMMARY:" run_newapi.log; then
+              echo '```json'
+              grep "AUTO_OAUTH_SUMMARY:" run_newapi.log | tail -n 1 | sed 's/.*AUTO_OAUTH_SUMMARY: //'
+              echo '```'
+            else
+              echo "AUTO_OAUTH_SUMMARY not found."
+            fi
+            echo
+            echo "### Key Log Lines"
+            grep -E "LDOH|站点可用性过滤|签到结束|OAuth 网络不可达|WinError 1225" run_newapi.log | tail -n 40 || true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload runtime log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-newapi-log
+          path: run_newapi.log
+          retention-days: 3
+          if-no-files-found: ignore
 
       # 上传 Debug 截图（仅在 debug 模式下）
       - name: Upload debug screenshots

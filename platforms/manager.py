@@ -556,6 +556,22 @@ class PlatformManager:
 
         return available
 
+    def _log_auto_oauth_summary(
+        self, stats: dict[str, int | str], results: list[CheckinResult]
+    ) -> None:
+        """输出自动 OAuth 结构化摘要，便于 CI 抽取。"""
+        success_count = sum(1 for r in results if r.status == CheckinStatus.SUCCESS)
+        failed_count = sum(1 for r in results if r.status == CheckinStatus.FAILED)
+        skipped_count = sum(1 for r in results if r.status == CheckinStatus.SKIPPED)
+        payload = {
+            **stats,
+            "result_total": len(results),
+            "result_success": success_count,
+            "result_failed": failed_count,
+            "result_skipped": skipped_count,
+        }
+        logger.info(f"AUTO_OAUTH_SUMMARY: {json.dumps(payload, ensure_ascii=False)}")
+
     async def run_all(self) -> list[CheckinResult]:
         """运行所有平台签到"""
         self.results = []
@@ -653,6 +669,19 @@ class PlatformManager:
         from utils.browser import BrowserManager
 
         results = []
+        stats: dict[str, int | str] = {
+            "ldoh_sync_status": "not_started",
+            "candidate_total": 0,
+            "candidate_after_probe": 0,
+            "candidate_skipped_by_probe": 0,
+            "cookie_hit": 0,
+            "cookie_success": 0,
+            "cookie_invalidated": 0,
+            "oauth_needed": 0,
+            "oauth_success": 0,
+            "oauth_failed": 0,
+            "oauth_network_failed": 0,
+        }
 
         # 使用第一个 LinuxDO 账号
         linuxdo_account = self._linuxdo_accounts[0]
@@ -666,8 +695,10 @@ class PlatformManager:
         providers_to_test = self._get_local_auto_providers()
         if not providers_to_test:
             logger.warning("未找到可用的本地站点配置，自动模式终止")
+            self._log_auto_oauth_summary(stats, results)
             return results
         logger.info(f"本地兜底站点数量: {len(providers_to_test)}")
+        stats["candidate_total"] = len(providers_to_test)
 
         # 登录 LinuxDO 授权必须复用 GitHub Action 同款模式：nodriver + 有头
         self._force_nodriver_headed_for_oauth()
@@ -710,17 +741,23 @@ class PlatformManager:
                 synced_providers = await self._try_sync_ldoh_providers(tab, providers_to_test)
                 if synced_providers:
                     providers_to_test = synced_providers
+                    stats["ldoh_sync_status"] = "success"
                 else:
                     logger.warning("LDOH 同步失败，使用本地兜底站点继续")
+                    stats["ldoh_sync_status"] = "fallback_local"
             else:
                 logger.warning("共享会话 LinuxDO 登录失败，后续改为逐站独立 OAuth")
+                stats["ldoh_sync_status"] = "linuxdo_login_failed_fallback_local"
         except Exception as e:
             logger.error(f"共享浏览器启动失败: {e}")
             logger.warning("无法连接 LDOH 或共享浏览器不可用，使用本地兜底站点继续")
+            stats["ldoh_sync_status"] = "shared_browser_failed_fallback_local"
 
         logger.info(f"本轮待处理站点: {len(providers_to_test)}")
 
         providers_to_test = await self._filter_available_providers(providers_to_test)
+        stats["candidate_after_probe"] = len(providers_to_test)
+        stats["candidate_skipped_by_probe"] = int(stats["candidate_total"]) - len(providers_to_test)
         if not providers_to_test:
             logger.warning("可用站点数为 0，跳过本轮 NewAPI 自动签到")
             try:
@@ -728,6 +765,7 @@ class PlatformManager:
                 await browser_mgr.close()
             except Exception as e:
                 logger.debug(f"关闭共享浏览器失败（可忽略）: {e}")
+            self._log_auto_oauth_summary(stats, results)
             return results
 
         # 统计需要浏览器 OAuth 的站点（无缓存或缓存失效）
@@ -738,6 +776,7 @@ class PlatformManager:
             # 1. 优先尝试缓存的 Cookie
             cached = self._cookie_cache.get(provider_name, account_name)
             if cached:
+                stats["cookie_hit"] = int(stats["cookie_hit"]) + 1
                 logger.info(f"[{account_name}] 发现缓存Cookie，尝试Cookie+API签到...")
                 try:
                     cached_account = AnyRouterAccount(
@@ -754,6 +793,7 @@ class PlatformManager:
                             result.details = {}
                         result.details["login_method"] = "cached_cookie"
                         results.append(result)
+                        stats["cookie_success"] = int(stats["cookie_success"]) + 1
                         logger.success(f"[{account_name}] 缓存Cookie签到成功！")
                         continue
 
@@ -762,6 +802,7 @@ class PlatformManager:
                     if "401" in msg or "403" in msg or "过期" in msg:
                         logger.warning(f"[{account_name}] 缓存Cookie已失效，需要重新OAuth")
                         self._cookie_cache.invalidate(provider_name, account_name)
+                        stats["cookie_invalidated"] = int(stats["cookie_invalidated"]) + 1
                     else:
                         logger.warning(f"[{account_name}] 签到失败: {msg}")
                         results.append(result)
@@ -769,6 +810,7 @@ class PlatformManager:
                 except Exception as e:
                     logger.warning(f"[{account_name}] 缓存Cookie签到异常: {e}")
                     self._cookie_cache.invalidate(provider_name, account_name)
+                    stats["cookie_invalidated"] = int(stats["cookie_invalidated"]) + 1
 
             # 2. 无缓存或缓存失效，标记为需要 OAuth
             need_oauth.append({
@@ -776,6 +818,7 @@ class PlatformManager:
                 "provider_name": provider_name,
                 "account_name": account_name,
             })
+        stats["oauth_needed"] = len(need_oauth)
 
         if not need_oauth:
             logger.info("所有站点均通过缓存Cookie完成，无需 OAuth")
@@ -784,6 +827,7 @@ class PlatformManager:
                 await browser_mgr.close()
             except Exception as e:
                 logger.debug(f"关闭共享浏览器失败（可忽略）: {e}")
+            self._log_auto_oauth_summary(stats, results)
             return results
 
         # 3. 优先共享会话 OAuth；失败再回退逐站独立浏览器
@@ -809,6 +853,7 @@ class PlatformManager:
 
                     if result.status == CheckinStatus.SUCCESS:
                         logger.success(f"[{account_name}] OAuth 签到成功！")
+                        stats["oauth_success"] = int(stats["oauth_success"]) + 1
                         if result.details:
                             cached_session = result.details.pop("_cached_session", None)
                             cached_api_user = result.details.pop("_cached_api_user", None)
@@ -818,12 +863,16 @@ class PlatformManager:
                                 )
                                 logger.success(f"[{account_name}] 新Cookie已缓存")
                     else:
+                        stats["oauth_failed"] = int(stats["oauth_failed"]) + 1
+                        if self._is_retryable_network_message(result.message or ""):
+                            stats["oauth_network_failed"] = int(stats["oauth_network_failed"]) + 1
                         logger.warning(f"[{account_name}] OAuth 签到失败: {result.message}")
 
                     results.append(result)
 
                 except asyncio.TimeoutError:
                     logger.error(f"[{account_name}] 超时（>{site_timeout}s），跳过")
+                    stats["oauth_failed"] = int(stats["oauth_failed"]) + 1
                     results.append(CheckinResult(
                         platform=f"NewAPI ({provider_name})",
                         account=account_name,
@@ -832,6 +881,9 @@ class PlatformManager:
                     ))
                 except Exception as e:
                     logger.error(f"[{account_name}] OAuth 异常: {e}")
+                    stats["oauth_failed"] = int(stats["oauth_failed"]) + 1
+                    if self._is_retryable_network_error(e):
+                        stats["oauth_network_failed"] = int(stats["oauth_network_failed"]) + 1
                     results.append(CheckinResult(
                         platform=f"NewAPI ({provider_name})",
                         account=account_name,
@@ -841,7 +893,7 @@ class PlatformManager:
         else:
             logger.warning(f"共享会话不可用，回退为逐站独立浏览器 OAuth（{len(need_oauth)} 个站点）")
             await self._run_newapi_oauth_fallback(
-                need_oauth, linuxdo_username, linuxdo_password, results
+                need_oauth, linuxdo_username, linuxdo_password, results, stats
             )
 
         try:
@@ -850,6 +902,7 @@ class PlatformManager:
         except Exception as e:
             logger.debug(f"关闭共享浏览器失败（可忽略）: {e}")
 
+        self._log_auto_oauth_summary(stats, results)
         return results
 
     async def _oauth_single_site_shared(
@@ -932,7 +985,7 @@ class PlatformManager:
 
     async def _run_newapi_oauth_fallback(
         self, need_oauth: list[dict], linuxdo_username: str, linuxdo_password: str,
-        results: list[CheckinResult],
+        results: list[CheckinResult], stats: dict[str, int | str] | None = None,
     ) -> None:
         """回退模式：共享会话失败时，逐站独立启动浏览器"""
         from platforms.newapi_browser import browser_checkin_newapi
@@ -1031,6 +1084,13 @@ class PlatformManager:
                     message="OAuth 未知失败",
                 )
             results.append(final_result)
+            if stats is not None:
+                if final_result.status == CheckinStatus.SUCCESS:
+                    stats["oauth_success"] = int(stats.get("oauth_success", 0)) + 1
+                else:
+                    stats["oauth_failed"] = int(stats.get("oauth_failed", 0)) + 1
+                    if self._is_retryable_network_message(final_result.message or ""):
+                        stats["oauth_network_failed"] = int(stats.get("oauth_network_failed", 0)) + 1
 
     async def _run_newapi_with_accounts(self) -> list[CheckinResult]:
         """手动模式：使用 NEWAPI_ACCOUNTS 中预配置的账号签到"""
