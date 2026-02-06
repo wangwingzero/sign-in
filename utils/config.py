@@ -421,14 +421,14 @@ DEFAULT_PROVIDERS: dict[str, dict] = {
     "wong": {
         "domain": "https://wzw.pp.ua",
         "sign_in_path": "/api/user/checkin",
-        # Wong 的 SPA 框架和 nodriver CDP 有兼容性问题（evaluate 挂起）
-        # 直接用 OAuth 路径跳转，不通过页面按钮
-        "oauth_path": "/oauth/linuxdo",
+        # Wong: SPA 兼容性问题 + session 立刻 expired，自动模式跳过，手动模式可用
+        "bypass_method": "manual_cookie_only",
     },
     "elysiver": {
         "domain": "https://elysiver.h-e.top",
         "sign_in_path": "/api/user/checkin",
-        "bypass_method": "browser_oauth",  # 需要浏览器 OAuth 登录绕过 Cloudflare
+        # Elysiver: 特殊 CF 盾，自动模式跳过，手动模式可用
+        "bypass_method": "manual_cookie_only",
     },
     "kfcapi": {
         "domain": "https://kfc-api.sxxe.net",

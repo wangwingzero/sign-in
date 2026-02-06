@@ -166,11 +166,12 @@ class PlatformManager:
 
         logger.info(f"自动模式: 使用 LinuxDO 账号 [{linuxdo_name}] 遍历所有站点")
 
-        # 筛选可用的 provider（跳过需要 WAF cookies 的特殊站点）
+        # 筛选可用的 provider（跳过特殊站点）
         providers_to_test = {}
         for name, config_data in DEFAULT_PROVIDERS.items():
-            if config_data.get("bypass_method") == "waf_cookies":
-                logger.debug(f"跳过 WAF 站点: {name}")
+            bypass = config_data.get("bypass_method")
+            if bypass in ("waf_cookies", "manual_cookie_only"):
+                logger.debug(f"跳过特殊站点: {name} ({bypass})")
                 continue
             providers_to_test[name] = ProviderConfig.from_dict(name, config_data)
 

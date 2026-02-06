@@ -655,13 +655,24 @@ class NewAPIBrowserCheckin:
                 """)
                 await asyncio.sleep(5)
 
-            # 检查是否回到了 provider 站点
+            # 等待所有重定向完成（OAuth callback → set cookie → /console）
+            provider_host = self.provider.domain.replace("https://", "").replace("http://", "")
+            for _redir_wait in range(15):
+                await asyncio.sleep(1)
+                current_url = tab.target.url if hasattr(tab, "target") else ""
+                if provider_host in current_url and "oauth" not in current_url.lower():
+                    logger.success(f"[{self.account_name}] 直接 OAuth 成功！URL: {current_url}")
+                    # 多等 2 秒确保 cookie 设置完成
+                    await asyncio.sleep(2)
+                    return await self._extract_session_from_browser(tab)
+
             current_url = tab.target.url if hasattr(tab, "target") else ""
-            if self.provider.domain.replace("https://", "") in current_url:
-                logger.success(f"[{self.account_name}] 直接 OAuth 成功！")
+            if provider_host in current_url:
+                logger.success(f"[{self.account_name}] 直接 OAuth 成功（仍在 OAuth 路径）: {current_url}")
+                await asyncio.sleep(2)
                 return await self._extract_session_from_browser(tab)
             else:
-                logger.warning(f"[{self.account_name}] 直接 OAuth 未返回站点，继续尝试按钮方式...")
+                logger.warning(f"[{self.account_name}] 直接 OAuth 未返回站点: {current_url}")
 
         login_url = f"{self.provider.domain}{self.provider.login_path}"
         logger.info(f"[{self.account_name}] 访问站点登录页: {login_url}")
@@ -1118,24 +1129,44 @@ class NewAPIBrowserCheckin:
 
             # 先确保在 provider 域名上（触发 session cookie 设置）
             current_url = tab.target.url if hasattr(tab, "target") else ""
+            logger.info(f"[{self.account_name}] 当前 URL: {current_url}")
             if provider_domain not in current_url:
                 logger.info(f"[{self.account_name}] 导航到站点主页确保 session 设置...")
                 await tab.get(self.provider.domain)
                 await asyncio.sleep(3)
 
+            # 先尝试从 JS document.cookie 获取（最直接）
+            try:
+                js_cookies = await tab.evaluate("document.cookie")
+                if js_cookies and isinstance(js_cookies, dict):
+                    js_cookies = js_cookies.get('value', '')
+                if js_cookies:
+                    logger.info(f"[{self.account_name}] JS document.cookie: {str(js_cookies)[:200]}")
+                    # 解析 document.cookie 字符串
+                    for pair in str(js_cookies).split(";"):
+                        pair = pair.strip()
+                        if "=" in pair:
+                            name, value = pair.split("=", 1)
+                            if name.strip() == "session" and value.strip():
+                                session_cookie = value.strip()
+                                logger.info(f"[{self.account_name}] 从 JS 获取到 session: {session_cookie[:30]}...")
+                else:
+                    logger.info(f"[{self.account_name}] JS document.cookie 为空")
+            except Exception as e:
+                logger.debug(f"[{self.account_name}] JS document.cookie 读取失败: {e}")
+
             # 重试获取 session（有些站点 cookie 设置有延迟）
             for attempt in range(3):
                 all_cookies = await tab.send(cdp_network.get_all_cookies())
 
-                # Debug: 打印 provider 域名相关的 cookies
-                if self._debug:
-                    provider_cookies = [
-                        f"{c.name}={c.value[:20]}... (domain={c.domain})"
-                        for c in all_cookies if provider_domain in (c.domain or "")
-                    ]
-                    all_names = [c.name for c in all_cookies]
-                    logger.debug(f"[{self.account_name}] 所有 cookies: {all_names}")
-                    logger.debug(f"[{self.account_name}] {provider_domain} cookies: {provider_cookies}")
+                # 打印 cookie 摘要（帮助定位 session 提取问题）
+                provider_cookies = [
+                    f"{c.name}={c.value[:20]}...(d={c.domain})"
+                    for c in all_cookies if provider_domain in (c.domain or "") or (c.domain or "").lstrip(".") in provider_domain
+                ]
+                all_domains = list({c.domain for c in all_cookies})
+                logger.info(f"[{self.account_name}] cookies 域名: {all_domains}")
+                logger.info(f"[{self.account_name}] {provider_domain} 匹配cookies: {provider_cookies}")
 
                 # 按 provider 域名过滤，查找 session cookie
                 # NewAPI 站点的 session cookie 可能叫不同的名字
