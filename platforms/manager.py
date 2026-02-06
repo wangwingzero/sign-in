@@ -12,15 +12,17 @@
 
 import asyncio
 import json
+import os
 import ssl
 import tempfile
+from urllib.parse import urlparse
 
 import httpx
 from loguru import logger
 
 from platforms.base import CheckinResult, CheckinStatus
 from platforms.linuxdo import LinuxDOAdapter
-from utils.config import DEFAULT_PROVIDERS, AnyRouterAccount, AppConfig
+from utils.config import DEFAULT_PROVIDERS, AnyRouterAccount, AppConfig, ProviderConfig
 from utils.cookie_cache import CookieCache
 from utils.notify import NotificationManager
 
@@ -60,6 +62,420 @@ class PlatformManager:
                 })
         if self._linuxdo_accounts:
             logger.info(f"已加载 {len(self._linuxdo_accounts)} 个 LinuxDO 账户用于浏览器回退登录")
+
+    @staticmethod
+    def _unwrap_eval_value(value):
+        """解包 nodriver evaluate 可能返回的 {'value': ...} 结构。"""
+        if isinstance(value, dict) and "value" in value and len(value) <= 3:
+            return PlatformManager._unwrap_eval_value(value.get("value"))
+        return value
+
+    @staticmethod
+    def _normalize_domain(domain: str) -> str:
+        """标准化域名 URL，统一为 https://host 形式（无尾斜杠）。"""
+        if not domain:
+            return ""
+        normalized = domain.strip()
+        if not normalized:
+            return ""
+        if not normalized.startswith(("http://", "https://")):
+            normalized = f"https://{normalized}"
+        return normalized.rstrip("/")
+
+    @staticmethod
+    def _make_ldoh_provider_name(domain: str, existing_names: set[str]) -> str:
+        """为 LDOH 动态站点生成稳定 provider 名称。"""
+        host = urlparse(domain).netloc.lower().split(":")[0]
+        base = host.replace(".", "_").replace("-", "_")
+        if not base:
+            base = "site"
+        if not base[0].isalpha():
+            base = f"site_{base}"
+        candidate = f"ldoh_{base}"
+        idx = 2
+        while candidate in existing_names:
+            candidate = f"ldoh_{base}_{idx}"
+            idx += 1
+        return candidate
+
+    def _register_runtime_provider(self, provider_name: str, provider: ProviderConfig) -> None:
+        """运行时注册 provider，确保浏览器 OAuth 回退可直接复用。"""
+        self.config.providers[provider_name] = provider
+        config_data = {
+            "domain": provider.domain,
+            "login_path": provider.login_path,
+            "sign_in_path": provider.sign_in_path,
+            "user_info_path": provider.user_info_path,
+            "api_user_key": provider.api_user_key,
+        }
+        if provider.bypass_method:
+            config_data["bypass_method"] = provider.bypass_method
+        if provider.waf_cookie_names:
+            config_data["waf_cookie_names"] = provider.waf_cookie_names
+        if provider.oauth_path:
+            config_data["oauth_path"] = provider.oauth_path
+        DEFAULT_PROVIDERS[provider_name] = config_data
+
+    def _get_local_auto_providers(self) -> dict[str, ProviderConfig]:
+        """获取自动模式本地兜底站点列表（跳过特殊站点）。"""
+        providers_to_test: dict[str, ProviderConfig] = {}
+
+        source_providers = self.config.providers
+        if not source_providers:
+            source_providers = {
+                name: ProviderConfig.from_dict(name, config_data)
+                for name, config_data in DEFAULT_PROVIDERS.items()
+            }
+
+        for name, provider in source_providers.items():
+            provider_obj = provider
+            if not isinstance(provider_obj, ProviderConfig):
+                try:
+                    provider_obj = ProviderConfig.from_dict(name, provider_obj)
+                except Exception as e:
+                    logger.warning(f"跳过无效 provider 配置 {name}: {e}")
+                    continue
+
+            bypass = provider_obj.bypass_method
+            if bypass in ("waf_cookies", "manual_cookie_only"):
+                logger.debug(f"跳过特殊站点: {name} ({bypass})")
+                continue
+            if not provider_obj.domain:
+                logger.debug(f"跳过空域名站点: {name}")
+                continue
+            providers_to_test[name] = provider_obj
+
+        return providers_to_test
+
+    @staticmethod
+    def _force_nodriver_headed_for_oauth() -> None:
+        """自动 OAuth 固定使用 nodriver + 非 headless，避免环境变量误配。"""
+        current_engine = (os.environ.get("BROWSER_ENGINE") or "").lower()
+        if current_engine != "nodriver":
+            logger.warning(
+                f"自动 OAuth 强制使用 nodriver（当前 BROWSER_ENGINE={current_engine or '未设置'}）"
+            )
+        if (os.environ.get("BROWSER_HEADLESS") or "").lower() == "true":
+            logger.warning("自动 OAuth 强制使用有头模式（忽略 BROWSER_HEADLESS=true）")
+
+        os.environ["BROWSER_ENGINE"] = "nodriver"
+        os.environ["BROWSER_HEADLESS"] = "false"
+
+    async def _auto_approve_linuxdo_oauth(self, tab) -> bool:
+        """在 LinuxDO OAuth 授权页自动点击“允许/Authorize”按钮。"""
+        try:
+            current_url = getattr(tab.target, "url", "") or ""
+            if "linux.do" not in current_url.lower() or "authorize" not in current_url.lower():
+                return False
+
+            logger.info(f"LDOH: 检测到 LinuxDO 授权页，尝试自动同意: {current_url}")
+
+            # 多策略点击：文本匹配 -> submit 按钮 -> 主按钮类
+            click_result = await tab.evaluate(
+                r"""
+                (function() {
+                    function clickTarget(el) {
+                        if (!el) return false;
+                        try { el.scrollIntoView({block: 'center'}); } catch (e) {}
+                        try { el.focus(); } catch (e) {}
+                        try { el.click(); return true; } catch (e) {}
+                        try {
+                            const ev = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+                            el.dispatchEvent(ev);
+                            return true;
+                        } catch (e) {}
+                        return false;
+                    }
+
+                    const all = Array.from(document.querySelectorAll('button, a, input[type="submit"], [role="button"]'));
+                    const byText = all.find((el) => {
+                        const text = (el.innerText || el.value || el.textContent || '').trim().toLowerCase();
+                        return text.includes('允许') || text.includes('同意') || text.includes('authorize') || text.includes('allow');
+                    });
+                    if (clickTarget(byText)) return 'text';
+
+                    const submitBtn = document.querySelector('button[type="submit"], input[type="submit"]');
+                    if (clickTarget(submitBtn)) return 'submit';
+
+                    const primaryBtn = document.querySelector('.btn-primary, .btn.btn-primary');
+                    if (clickTarget(primaryBtn)) return 'primary';
+
+                    const form = document.querySelector('form[action*="oauth"], form[action*="authorize"]');
+                    if (form) {
+                        try { form.submit(); return 'form_submit'; } catch (e) {}
+                    }
+                    return '';
+                })()
+                """
+            )
+
+            strategy = self._unwrap_eval_value(click_result)
+            if strategy:
+                logger.info(f"LDOH: 已执行授权点击策略: {strategy}")
+                await asyncio.sleep(2)
+                new_url = getattr(tab.target, "url", "") or ""
+                if new_url != current_url:
+                    logger.success(f"LDOH: 授权页已跳转: {new_url}")
+                    return True
+                logger.warning("LDOH: 已点击授权按钮，但页面暂未跳转")
+            else:
+                logger.warning("LDOH: 授权页未找到可点击的“允许”按钮")
+        except Exception as e:
+            logger.warning(f"LDOH: 自动同意授权失败: {e}")
+
+        return False
+
+    async def _trigger_ldoh_login_button(self, tab) -> bool:
+        """在 LDOH 登录页触发“使用 LinuxDo 登录”按钮。"""
+        try:
+            click_result = await tab.evaluate(
+                r"""
+                (function() {
+                    const candidates = Array.from(
+                        document.querySelectorAll('a, button, [role="button"], input[type="submit"]')
+                    );
+                    for (const el of candidates) {
+                        const text = (el.innerText || el.value || el.textContent || '').trim().toLowerCase();
+                        const href = (el.href || el.getAttribute('href') || '').toLowerCase();
+                        const looksLikeLogin =
+                            text.includes('linuxdo') ||
+                            text.includes('linux do') ||
+                            text.includes('使用 linuxdo 登录') ||
+                            text.includes('login') ||
+                            href.includes('linux.do') ||
+                            href.includes('/auth/linuxdo') ||
+                            href.includes('/oauth');
+                        if (!looksLikeLogin) continue;
+                        try { el.scrollIntoView({ block: 'center' }); } catch (e) {}
+                        try { el.focus(); } catch (e) {}
+                        try {
+                            if (el.tagName === 'A' && el.href) {
+                                window.location.href = el.href;
+                            } else {
+                                el.click();
+                            }
+                            return true;
+                        } catch (e) {}
+                    }
+                    return false;
+                })()
+                """
+            )
+            clicked = bool(self._unwrap_eval_value(click_result))
+            if clicked:
+                logger.info("LDOH: 已触发登录按钮（使用 LinuxDo 登录）")
+            return clicked
+        except Exception as e:
+            logger.warning(f"LDOH: 触发登录按钮失败: {e}")
+            return False
+
+    async def _try_sync_ldoh_providers(
+        self, tab, local_providers: dict[str, ProviderConfig]
+    ) -> dict[str, ProviderConfig] | None:
+        """尝试从 LDOH 同步可签到站点；失败返回 None。"""
+        ldoh_base_url = self._normalize_domain(os.getenv("LDOH_BASE_URL", "https://ldoh.105117.xyz"))
+        ldoh_host = urlparse(ldoh_base_url).netloc.lower()
+        login_url = f"{ldoh_base_url}/auth/login?returnTo=%2F"
+
+        logger.info(f"尝试同步 LDOH 站点: {ldoh_base_url}")
+
+        try:
+            # 1) 进入登录页，触发 LinuxDo SSO（复用当前已登录 LinuxDo 会话）
+            await tab.get(login_url)
+            await asyncio.sleep(3)
+
+            for i in range(90):
+                current_url = getattr(tab.target, "url", "") or ""
+                current_url_lower = current_url.lower()
+                if i % 5 == 0:
+                    logger.info(f"LDOH 状态机: step={i}, url={current_url}")
+
+                if "linux.do" in current_url_lower and "authorize" in current_url_lower:
+                    await self._auto_approve_linuxdo_oauth(tab)
+
+                if ldoh_host in current_url_lower and "/auth/login" in current_url_lower:
+                    # 登录页按钮点击可能偶发失效，间隔重试触发
+                    if i % 3 == 0:
+                        await self._trigger_ldoh_login_button(tab)
+
+                if ldoh_host in current_url_lower and "/auth/login" not in current_url_lower:
+                    break
+                await asyncio.sleep(1)
+
+            # 2) 在 LDOH 会话中获取站点列表
+            await tab.get(ldoh_base_url)
+            await asyncio.sleep(2)
+            raw_payload = await tab.evaluate(
+                r"""
+                (async function() {
+                    try {
+                        const resp = await fetch('/api/sites', { credentials: 'include' });
+                        const text = await resp.text();
+                        let data = null;
+                        try { data = JSON.parse(text); } catch (e) { data = null; }
+                        const sites = Array.isArray(data && data.sites) ? data.sites : [];
+                        const compact = sites.map(s => ({
+                            name: s?.name || '',
+                            apiBaseUrl: s?.apiBaseUrl || '',
+                            supportsCheckin: !!s?.supportsCheckin,
+                            checkinUrl: s?.checkinUrl || '',
+                        }));
+                        return JSON.stringify({
+                            status: resp.status,
+                            total: compact.length,
+                            sites: compact
+                        });
+                    } catch (e) {
+                        return JSON.stringify({
+                            status: -1,
+                            total: 0,
+                            error: String(e),
+                            sites: []
+                        });
+                    }
+                })()
+                """
+            )
+            payload_text = self._unwrap_eval_value(raw_payload)
+            if not isinstance(payload_text, str):
+                payload_text = str(payload_text or "")
+            try:
+                payload = json.loads(payload_text)
+            except json.JSONDecodeError:
+                logger.warning(
+                    f"LDOH 站点同步返回非 JSON，前200字符: {payload_text[:200]!r}"
+                )
+                return None
+
+            status = int(payload.get("status", -1))
+            sites = payload.get("sites") if isinstance(payload.get("sites"), list) else []
+            if status != 200 or not sites:
+                logger.warning(f"LDOH 站点同步失败: status={status}, sites={len(sites)}")
+                return None
+
+            local_by_domain = {
+                self._normalize_domain(provider.domain): (name, provider)
+                for name, provider in local_providers.items()
+            }
+
+            dynamic_providers: dict[str, ProviderConfig] = {}
+            existing_names = set(local_providers.keys())
+            skipped_count = 0
+            reused_count = 0
+            new_count = 0
+
+            for site in sites:
+                if not isinstance(site, dict):
+                    skipped_count += 1
+                    continue
+                if not site.get("supportsCheckin"):
+                    skipped_count += 1
+                    continue
+
+                domain = self._normalize_domain(str(site.get("apiBaseUrl", "")))
+                if not domain:
+                    skipped_count += 1
+                    continue
+
+                if domain in local_by_domain:
+                    provider_name, provider_obj = local_by_domain[domain]
+                    dynamic_providers[provider_name] = provider_obj
+                    reused_count += 1
+                    continue
+
+                provider_name = self._make_ldoh_provider_name(domain, existing_names)
+                existing_names.add(provider_name)
+                provider_obj = ProviderConfig(
+                    name=provider_name,
+                    domain=domain,
+                    login_path="/login",
+                    sign_in_path="/api/user/checkin",
+                    user_info_path="/api/user/self",
+                    api_user_key="new-api-user",
+                )
+                dynamic_providers[provider_name] = provider_obj
+                new_count += 1
+
+            if not dynamic_providers:
+                logger.warning("LDOH 返回站点为空（可签到=0），回退本地兜底")
+                return None
+
+            # 运行时注册，保证后续共享 OAuth / 回退 OAuth 可直接使用
+            for provider_name, provider in dynamic_providers.items():
+                self._register_runtime_provider(provider_name, provider)
+
+            logger.info(
+                f"LDOH 同步成功: 可签到 {len(dynamic_providers)} 个 "
+                f"(复用本地={reused_count}, 新增={new_count}, 跳过={skipped_count})"
+            )
+            return dynamic_providers
+        except Exception as e:
+            logger.warning(f"LDOH 同步异常: {e}")
+            return None
+
+    async def _probe_provider_availability(
+        self, client: httpx.AsyncClient, provider_name: str, provider: ProviderConfig,
+    ) -> tuple[bool, str]:
+        """探测站点可用性：仅保留可访问站点，避免无效站点进入签到流程。"""
+        status_ok = {200, 201, 202, 204, 301, 302, 307, 308, 400, 401, 403, 405, 429}
+        targets = [
+            f"{provider.domain}{provider.user_info_path}",
+            provider.domain,
+        ]
+        last_reason = "unknown"
+
+        for idx, url in enumerate(targets):
+            try:
+                resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"}, follow_redirects=True)
+                code = resp.status_code
+                if code in status_ok:
+                    return True, f"HTTP {code} ({'user_info' if idx == 0 else 'root'})"
+                last_reason = f"HTTP {code} ({'user_info' if idx == 0 else 'root'})"
+            except Exception as e:
+                last_reason = f"{type(e).__name__}: {str(e)}"
+
+        logger.debug(f"[{provider_name}] 可用性探测失败: {last_reason}")
+        return False, last_reason
+
+    async def _filter_available_providers(
+        self, providers: dict[str, ProviderConfig]
+    ) -> dict[str, ProviderConfig]:
+        """过滤掉不可用站点，仅返回当前可用站点。"""
+        if not providers:
+            return providers
+
+        timeout = httpx.Timeout(connect=4.0, read=6.0, write=6.0, pool=6.0)
+        limits = httpx.Limits(max_connections=20, max_keepalive_connections=10)
+        semaphore = asyncio.Semaphore(10)
+
+        available: dict[str, ProviderConfig] = {}
+        unavailable: list[tuple[str, str]] = []
+
+        async with httpx.AsyncClient(verify=False, timeout=timeout, limits=limits) as client:
+            async def check_one(name: str, provider: ProviderConfig) -> None:
+                async with semaphore:
+                    ok, reason = await self._probe_provider_availability(client, name, provider)
+                    if ok:
+                        available[name] = provider
+                        logger.debug(f"[{name}] 站点可用: {reason}")
+                    else:
+                        unavailable.append((name, reason))
+
+            await asyncio.gather(*[
+                check_one(name, provider)
+                for name, provider in providers.items()
+            ])
+
+        if unavailable:
+            preview = ", ".join(f"{name}({reason})" for name, reason in unavailable[:8])
+            logger.warning(
+                f"站点可用性过滤: 总计 {len(providers)}，可用 {len(available)}，跳过 {len(unavailable)}。"
+                f"{' 示例: ' + preview if preview else ''}"
+            )
+        else:
+            logger.info(f"站点可用性过滤: {len(providers)} 个全部可用")
+
+        return available
 
     async def run_all(self) -> list[CheckinResult]:
         """运行所有平台签到"""
@@ -148,13 +564,14 @@ class PlatformManager:
         """自动模式：用 LinuxDO 账号遍历所有 NewAPI 站点，自动 OAuth 登录签到
 
         用户只需配置 LINUXDO_ACCOUNTS，系统自动：
-        1. 遍历 DEFAULT_PROVIDERS 中所有站点
-        2. 优先使用缓存的 Cookie 签到（快速）
-        3. 无缓存或 Cookie 过期时，自动使用浏览器 OAuth 获取新 Cookie
-        4. 签到成功后缓存 Cookie，下次直接用
+        1. 优先从 LDOH 同步“可签到站点”
+        2. 同步失败时回退到本地 DEFAULT/PROVIDERS 站点
+        3. 优先使用缓存的 Cookie 签到（快速）
+        4. 无缓存或 Cookie 过期时，自动使用浏览器 OAuth 获取新 Cookie
+        5. 签到成功后缓存 Cookie，下次直接用
         """
-        from platforms.newapi_browser import browser_checkin_newapi
-        from utils.config import ProviderConfig
+        from platforms.newapi_browser import NewAPIBrowserCheckin
+        from utils.browser import BrowserManager
 
         results = []
 
@@ -164,22 +581,78 @@ class PlatformManager:
         linuxdo_password = linuxdo_account["password"]
         linuxdo_name = linuxdo_account.get("name", linuxdo_username)
 
-        logger.info(f"自动模式: 使用 LinuxDO 账号 [{linuxdo_name}] 遍历所有站点")
+        logger.info(f"自动模式: 使用 LinuxDO 账号 [{linuxdo_name}] 遍历站点")
 
-        # 筛选可用的 provider（跳过特殊站点）
-        providers_to_test = {}
-        for name, config_data in DEFAULT_PROVIDERS.items():
-            bypass = config_data.get("bypass_method")
-            if bypass in ("waf_cookies", "manual_cookie_only"):
-                logger.debug(f"跳过特殊站点: {name} ({bypass})")
-                continue
-            providers_to_test[name] = ProviderConfig.from_dict(name, config_data)
+        # 本地兜底站点（LDOH 同步失败时使用）
+        providers_to_test = self._get_local_auto_providers()
+        if not providers_to_test:
+            logger.warning("未找到可用的本地站点配置，自动模式终止")
+            return results
+        logger.info(f"本地兜底站点数量: {len(providers_to_test)}")
 
-        logger.info(f"共 {len(providers_to_test)} 个站点待签到")
+        # 登录 LinuxDO 授权必须复用 GitHub Action 同款模式：nodriver + 有头
+        self._force_nodriver_headed_for_oauth()
+
+        # 共享浏览器会话：用于 LDOH 同步 + 批量 OAuth
+        is_ci = bool(os.environ.get("CI")) or bool(os.environ.get("GITHUB_ACTIONS"))
+        if is_ci and not bool(os.environ.get("DISPLAY")):
+            logger.warning("CI 环境未检测到 DISPLAY，nodriver 将回退 headless，授权成功率可能下降")
+
+        browser_mgr = BrowserManager(engine="nodriver", headless=False)
+        tab = None
+        linuxdo_logged_in = False
+
+        try:
+            await browser_mgr.start(max_retries=5 if is_ci else 3)
+            tab = browser_mgr.page
+
+            # 登录 LinuxDO 一次（后续站点复用）
+            seed_provider_name = next(iter(providers_to_test))
+            checker_for_login = NewAPIBrowserCheckin(
+                provider_name=seed_provider_name,
+                linuxdo_username=linuxdo_username,
+                linuxdo_password=linuxdo_password,
+                account_name="shared_login",
+            )
+            checker_for_login._browser_manager = browser_mgr
+            checker_for_login._debug = False  # 共享会话禁用截图，避免拖慢
+
+            for login_attempt in range(3):
+                if login_attempt > 0:
+                    logger.info(f"共享会话: LinuxDO 登录重试 {login_attempt + 1}/3...")
+                    await tab.get("about:blank")
+                    await asyncio.sleep(1)
+                linuxdo_logged_in = await checker_for_login._login_linuxdo(tab)
+                if linuxdo_logged_in:
+                    break
+                logger.warning(f"共享会话: LinuxDO 登录失败（第 {login_attempt + 1} 次）")
+
+            if linuxdo_logged_in:
+                synced_providers = await self._try_sync_ldoh_providers(tab, providers_to_test)
+                if synced_providers:
+                    providers_to_test = synced_providers
+                else:
+                    logger.warning("LDOH 同步失败，使用本地兜底站点继续")
+            else:
+                logger.warning("共享会话 LinuxDO 登录失败，后续改为逐站独立 OAuth")
+        except Exception as e:
+            logger.error(f"共享浏览器启动失败: {e}")
+            logger.warning("无法连接 LDOH 或共享浏览器不可用，使用本地兜底站点继续")
+
+        logger.info(f"本轮待处理站点: {len(providers_to_test)}")
+
+        providers_to_test = await self._filter_available_providers(providers_to_test)
+        if not providers_to_test:
+            logger.warning("可用站点数为 0，跳过本轮 NewAPI 自动签到")
+            try:
+                logger.info("共享会话: 关闭浏览器")
+                await browser_mgr.close()
+            except Exception as e:
+                logger.debug(f"关闭共享浏览器失败（可忽略）: {e}")
+            return results
 
         # 统计需要浏览器 OAuth 的站点（无缓存或缓存失效）
         need_oauth = []
-
         for provider_name, provider in providers_to_test.items():
             account_name = f"{linuxdo_name}_{provider_name}"
 
@@ -225,116 +698,78 @@ class PlatformManager:
                 "account_name": account_name,
             })
 
-        # 3. 共享浏览器会话：登录 LinuxDO 一次，所有站点复用（大幅提速+提高成功率）
-        SITE_TIMEOUT = 120  # 单站点超时：2 分钟（共享会话不需要重复登录，更快）
-        if need_oauth:
-            logger.info(f"需要浏览器OAuth登录: {len(need_oauth)} 个站点（共享会话，每站限时 {SITE_TIMEOUT}s）")
-
-            import os
-            from platforms.newapi_browser import NewAPIBrowserCheckin
-            from utils.browser import BrowserManager, get_browser_engine
-
-            # 启动一个共享浏览器实例
-            is_ci = bool(os.environ.get("CI")) or bool(os.environ.get("GITHUB_ACTIONS"))
-            headless = os.environ.get("BROWSER_HEADLESS", "false").lower() == "true"
-            if is_ci and bool(os.environ.get("DISPLAY")):
-                headless = False
-
-            engine = get_browser_engine()
-            browser_mgr = BrowserManager(engine=engine, headless=headless)
-
+        if not need_oauth:
+            logger.info("所有站点均通过缓存Cookie完成，无需 OAuth")
             try:
-                await browser_mgr.start(max_retries=5 if is_ci else 3)
-                tab = browser_mgr.page
-
-                # 登录 LinuxDO 一次（所有站点复用这个会话）
-                # 共享登录不保存 debug 截图（截图在 CF 页面会挂起 30-60 秒，拖慢时序）
-                logger.info("共享会话: 登录 LinuxDO...")
-                checker_for_login = NewAPIBrowserCheckin(
-                    provider_name=need_oauth[0]["provider_name"],
-                    linuxdo_username=linuxdo_username,
-                    linuxdo_password=linuxdo_password,
-                    account_name="shared_login",
-                )
-                checker_for_login._browser_manager = browser_mgr
-                checker_for_login._debug = False  # 共享登录禁用截图，避免拖慢
-
-                # 最多重试 3 次登录 LinuxDO（每次重新打开登录页）
-                linuxdo_logged_in = False
-                for login_attempt in range(3):
-                    if login_attempt > 0:
-                        logger.info(f"共享会话: LinuxDO 登录重试 {login_attempt + 1}/3...")
-                        await tab.get("about:blank")
-                        await asyncio.sleep(1)
-                    linuxdo_logged_in = await checker_for_login._login_linuxdo(tab)
-                    if linuxdo_logged_in:
-                        break
-                    logger.warning(f"共享会话: LinuxDO 登录失败（第 {login_attempt + 1} 次）")
-
-                if not linuxdo_logged_in:
-                    logger.error("共享会话: LinuxDO 3 次登录全部失败，回退到逐站独立浏览器模式")
-                    await browser_mgr.close()
-                    await self._run_newapi_oauth_fallback(
-                        need_oauth, linuxdo_username, linuxdo_password, results
-                    )
-                    return results
-
-                logger.success("共享会话: LinuxDO 登录成功！开始遍历所有站点...")
-
-                # 遍历所有站点，复用同一个浏览器和 LinuxDO 会话
-                for idx, item in enumerate(need_oauth):
-                    provider = item["provider"]
-                    provider_name = item["provider_name"]
-                    account_name = item["account_name"]
-
-                    logger.info(f"[{idx+1}/{len(need_oauth)}] [{account_name}] OAuth 登录...")
-
-                    try:
-                        result = await asyncio.wait_for(
-                            self._oauth_single_site_shared(
-                                tab, browser_mgr, provider, provider_name,
-                                account_name, linuxdo_username, linuxdo_password,
-                            ),
-                            timeout=SITE_TIMEOUT,
-                        )
-
-                        if result.status == CheckinStatus.SUCCESS:
-                            logger.success(f"[{account_name}] OAuth 签到成功！")
-                            if result.details:
-                                cached_session = result.details.pop("_cached_session", None)
-                                cached_api_user = result.details.pop("_cached_api_user", None)
-                                if cached_session and cached_api_user:
-                                    self._cookie_cache.save(
-                                        provider_name, account_name, cached_session, cached_api_user
-                                    )
-                                    logger.success(f"[{account_name}] 新Cookie已缓存")
-                        else:
-                            logger.warning(f"[{account_name}] OAuth 签到失败: {result.message}")
-
-                        results.append(result)
-
-                    except asyncio.TimeoutError:
-                        logger.error(f"[{account_name}] 超时（>{SITE_TIMEOUT}s），跳过")
-                        results.append(CheckinResult(
-                            platform=f"NewAPI ({provider_name})",
-                            account=account_name,
-                            status=CheckinStatus.FAILED,
-                            message=f"OAuth 超时（>{SITE_TIMEOUT}s）",
-                        ))
-                    except Exception as e:
-                        logger.error(f"[{account_name}] OAuth 异常: {e}")
-                        results.append(CheckinResult(
-                            platform=f"NewAPI ({provider_name})",
-                            account=account_name,
-                            status=CheckinStatus.FAILED,
-                            message=f"OAuth 异常: {str(e)}",
-                        ))
-
-            except Exception as e:
-                logger.error(f"共享浏览器启动失败: {e}")
-            finally:
                 logger.info("共享会话: 关闭浏览器")
                 await browser_mgr.close()
+            except Exception as e:
+                logger.debug(f"关闭共享浏览器失败（可忽略）: {e}")
+            return results
+
+        # 3. 优先共享会话 OAuth；失败再回退逐站独立浏览器
+        site_timeout = 120  # 单站点超时：2 分钟
+        if browser_mgr and linuxdo_logged_in and tab:
+            logger.info(f"需要浏览器OAuth登录: {len(need_oauth)} 个站点（共享会话，每站限时 {site_timeout}s）")
+
+            for idx, item in enumerate(need_oauth):
+                provider = item["provider"]
+                provider_name = item["provider_name"]
+                account_name = item["account_name"]
+
+                logger.info(f"[{idx+1}/{len(need_oauth)}] [{account_name}] OAuth 登录...")
+
+                try:
+                    result = await asyncio.wait_for(
+                        self._oauth_single_site_shared(
+                            tab, browser_mgr, provider, provider_name,
+                            account_name, linuxdo_username, linuxdo_password,
+                        ),
+                        timeout=site_timeout,
+                    )
+
+                    if result.status == CheckinStatus.SUCCESS:
+                        logger.success(f"[{account_name}] OAuth 签到成功！")
+                        if result.details:
+                            cached_session = result.details.pop("_cached_session", None)
+                            cached_api_user = result.details.pop("_cached_api_user", None)
+                            if cached_session and cached_api_user:
+                                self._cookie_cache.save(
+                                    provider_name, account_name, cached_session, cached_api_user
+                                )
+                                logger.success(f"[{account_name}] 新Cookie已缓存")
+                    else:
+                        logger.warning(f"[{account_name}] OAuth 签到失败: {result.message}")
+
+                    results.append(result)
+
+                except asyncio.TimeoutError:
+                    logger.error(f"[{account_name}] 超时（>{site_timeout}s），跳过")
+                    results.append(CheckinResult(
+                        platform=f"NewAPI ({provider_name})",
+                        account=account_name,
+                        status=CheckinStatus.FAILED,
+                        message=f"OAuth 超时（>{site_timeout}s）",
+                    ))
+                except Exception as e:
+                    logger.error(f"[{account_name}] OAuth 异常: {e}")
+                    results.append(CheckinResult(
+                        platform=f"NewAPI ({provider_name})",
+                        account=account_name,
+                        status=CheckinStatus.FAILED,
+                        message=f"OAuth 异常: {str(e)}",
+                    ))
+        else:
+            logger.warning(f"共享会话不可用，回退为逐站独立浏览器 OAuth（{len(need_oauth)} 个站点）")
+            await self._run_newapi_oauth_fallback(
+                need_oauth, linuxdo_username, linuxdo_password, results
+            )
+
+        try:
+            logger.info("共享会话: 关闭浏览器")
+            await browser_mgr.close()
+        except Exception as e:
+            logger.debug(f"关闭共享浏览器失败（可忽略）: {e}")
 
         return results
 

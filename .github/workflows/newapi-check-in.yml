@@ -66,6 +66,7 @@ jobs:
           # drissionpage: 不基于 WebDriver，较难被 Cloudflare 检测
           # patchright: 反检测 Chromium（备用）
           BROWSER_ENGINE: nodriver
+          BROWSER_HEADLESS: "false"
           DISPLAY: ":99"
           
           # Debug 模式（设置为 true 开启截图和详细日志）
