@@ -325,6 +325,23 @@
       <button id="copyLinuxdoBtn" class="btn btn-small" style="margin-top: 8px; width: 100%;">📋 复制 LinuxDO 配置</button>
     </div>
   </div>
+
+  <!-- 失败站点清单（由 GitHub Action 自动写入 failed_sites.json） -->
+  <div class="sites-section" style="background: linear-gradient(135deg, #3a2a1a 0%, #16213e 100%); border: 1px solid #ffb020;">
+    <div class="sites-header">
+      <span style="color: #ffb020;">🚨 失败站点清单</span>
+      <span id="failedSitesMeta" style="font-size: 11px; color: #b0b0b0;">未读取</span>
+    </div>
+    <div class="btn-row" style="margin-top: 8px;">
+      <button id="refreshFailedBtn" class="btn btn-small">🔄 刷新</button>
+      <button id="openFailedBtn" class="btn btn-small">🌐 打开失败站点</button>
+    </div>
+    <div class="btn-row">
+      <button id="copyFailedTemplateBtn" class="btn btn-small">🧩 复制失败模板</button>
+      <button id="copySecretBtn" class="btn btn-small">🔐 复制 NEWAPI_ACCOUNTS</button>
+    </div>
+    <div id="failedSitesPreview" class="output" style="max-height: 100px; margin-top: 8px;">暂无失败站点数据</div>
+  </div>
   
   <div class="sites-section">
     <div class="sites-header">

@@ -21,9 +21,11 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       actions: write
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       
       # 安装 uv
       - name: Install uv
@@ -159,9 +161,50 @@ jobs:
               echo "AUTO_OAUTH_SUMMARY not found."
             fi
             echo
+            if [ -f scripts/chrome_extension/failed_sites.json ]; then
+              echo "### Failed Sites Report"
+              echo '```json'
+              python - <<'PY'
+import json
+from pathlib import Path
+p = Path("scripts/chrome_extension/failed_sites.json")
+data = json.loads(p.read_text(encoding="utf-8"))
+print(json.dumps({
+    "generated_at": data.get("generated_at"),
+    "failed_count": data.get("failed_count", 0),
+    "sample": (data.get("failed_sites") or [])[:5],
+}, ensure_ascii=False, indent=2))
+PY
+              echo '```'
+            else
+              echo "### Failed Sites Report"
+              echo "failed_sites.json not found."
+            fi
+            echo
             echo "### Key Log Lines"
             grep -E "LDOH|站点可用性过滤|签到结束|OAuth 网络不可达|WinError 1225" run_newapi.log | tail -n 40 || true
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit failed sites report for extension
+        if: always()
+        run: |
+          if [ ! -f scripts/chrome_extension/failed_sites.json ]; then
+            echo "failed_sites.json not found, skip commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add scripts/chrome_extension/failed_sites.json
+          if git diff --cached --quiet; then
+            echo "No failed-sites changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore: sync failed sites for chrome extension [skip ci]"
+          git pull --rebase origin "${GITHUB_REF_NAME}" || true
+          git push origin "HEAD:${GITHUB_REF_NAME}" || true
 
       - name: Upload runtime log
         if: always()

@@ -16,6 +16,7 @@ import os
 import ssl
 import tempfile
 import time
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import httpx
@@ -50,6 +51,9 @@ class PlatformManager:
         # NEWAPI_ACCOUNTS 覆盖文件：Secrets 只读时，用文件缓存“最新可用 cookie”覆盖旧配置
         self._newapi_override_file = os.getenv(
             "NEWAPI_ACCOUNTS_OVERRIDE_FILE", ".newapi_accounts_override.json"
+        )
+        self._newapi_failed_sites_file = os.getenv(
+            "NEWAPI_FAILED_SITES_FILE", "scripts/chrome_extension/failed_sites.json"
         )
         self._newapi_original_state: dict[int, dict] = {}
         self._newapi_override_applied_accounts: set[int] = set()
@@ -909,6 +913,85 @@ class PlatformManager:
             "result_skipped": skipped_count,
         }
         logger.info(f"AUTO_OAUTH_SUMMARY: {json.dumps(payload, ensure_ascii=False)}")
+
+    @staticmethod
+    def _parse_newapi_provider(platform_name: str) -> str | None:
+        """从平台名中解析 provider，如 'NewAPI (wong)' -> 'wong'。"""
+        prefix = "NewAPI ("
+        if not platform_name.startswith(prefix) or not platform_name.endswith(")"):
+            return None
+        return platform_name[len(prefix):-1].strip() or None
+
+    def export_newapi_failed_sites_for_extension(self, output_path: str | None = None) -> str:
+        """导出 NewAPI 失败站点报告给 Chrome 插件读取。"""
+        target_path = output_path or self._newapi_failed_sites_file
+        failed_results = [
+            r
+            for r in self.results
+            if r.status == CheckinStatus.FAILED
+            and isinstance(r.platform, str)
+            and r.platform.startswith("NewAPI (")
+        ]
+
+        account_lookup: dict[tuple[str, str], AnyRouterAccount] = {}
+        for idx, account in enumerate(self.config.anyrouter_accounts):
+            account_lookup[(account.provider, account.get_display_name(idx))] = account
+
+        failed_sites: list[dict] = []
+        for result in failed_results:
+            provider_name = self._parse_newapi_provider(result.platform) or "unknown"
+            provider = self.config.providers.get(provider_name)
+            if not provider and provider_name in DEFAULT_PROVIDERS:
+                provider = ProviderConfig.from_dict(provider_name, DEFAULT_PROVIDERS[provider_name])
+
+            domain = provider.domain if provider else ""
+            login_url = f"{domain}/login" if domain else ""
+            oauth_url = ""
+            if provider and domain:
+                oauth_path = getattr(provider, "oauth_path", None)
+                oauth_url = f"{domain}{oauth_path}" if oauth_path else f"{domain}/auth/login?returnTo=%2F"
+
+            account = account_lookup.get((provider_name, result.account))
+            api_user = ""
+            if account and getattr(account, "api_user", None) is not None:
+                api_user = str(account.api_user)
+
+            message = result.message or "签到失败"
+            lowered_msg = message.lower()
+            oauth_blocked = any(
+                key in lowered_msg
+                for key in ("无法获取 session", "oauth 登录失败", "linuxdo 登录失败", "cloudflare", "验证失败")
+            )
+            failed_sites.append(
+                {
+                    "provider": provider_name,
+                    "account_name": result.account,
+                    "api_user": api_user,
+                    "platform": result.platform,
+                    "site_url": domain,
+                    "login_url": login_url,
+                    "oauth_login_url": oauth_url,
+                    "reason": message,
+                    "needs_manual_auth": True,
+                    "oauth_cookie_blocked": oauth_blocked,
+                }
+            )
+
+        payload = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "source": "github_actions" if os.getenv("GITHUB_ACTIONS") == "true" else "local",
+            "failed_count": len(failed_sites),
+            "failed_sites": failed_sites,
+        }
+
+        target_dir = os.path.dirname(target_path) or "."
+        os.makedirs(target_dir, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, dir=target_dir, encoding="utf-8") as tmp:
+            json.dump(payload, tmp, ensure_ascii=False, indent=2)
+            tmp_path = tmp.name
+        os.replace(tmp_path, target_path)
+        logger.info(f"已导出失败站点清单到: {target_path} (count={len(failed_sites)})")
+        return target_path
 
     async def run_all(self) -> list[CheckinResult]:
         """运行所有平台签到"""

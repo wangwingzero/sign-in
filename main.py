@@ -161,6 +161,13 @@ async def run_checkin(args: argparse.Namespace) -> int:
     else:
         await manager.run_all()
 
+    # 导出失败站点给 Chrome 插件（用于本地一键打开失败站点补登录）
+    if not args.platform or args.platform == "newapi":
+        try:
+            manager.export_newapi_failed_sites_for_extension()
+        except Exception as e:
+            logger.warning(f"导出失败站点清单失败: {e}")
+
     # 显示结果
     logger.info(f"签到完成 - 成功: {manager.success_count}, 失败: {manager.failed_count}, 跳过: {manager.skipped_count}")
 

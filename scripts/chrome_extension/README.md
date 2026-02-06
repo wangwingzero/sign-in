@@ -30,6 +30,14 @@
 
 6. 粘贴到 GitHub Secrets → `NEWAPI_ACCOUNTS`
 
+## 失败站点联动（GitHub Action）
+
+- Action 会把签到失败站点写入 `failed_sites.json`
+- 本地 `git pull` 后，扩展可直接：
+  - 一键打开失败站点页面
+  - 复制失败账号模板（占位 `session`）
+  - 生成可直接粘贴到 `NEWAPI_ACCOUNTS` 的 JSON（会合并本地已提取配置，AnyRouter 失败项会补占位）
+
 ## 支持的站点
 
 - WONG公益站 (wzw.pp.ua)

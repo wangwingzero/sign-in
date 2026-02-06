@@ -22,6 +22,7 @@ let SITES_CONFIG = { ...DEFAULT_SITES };
 let extractedConfigs = [];
 let savedConfigs = []; // 已保存的配置
 let editingSiteId = null; // 当前编辑的站点 ID
+let failedSitesReport = { failed_sites: [] }; // GitHub Action 失败站点报告
 
 // 从 storage 加载站点配置
 async function loadSitesConfig() {
@@ -90,6 +91,133 @@ function mergeConfigs(existingConfigs, newConfigs) {
   return { merged, updated, added };
 }
 
+// 去重（provider + api_user）
+function dedupeByProviderApiUser(configs) {
+  const m = new Map();
+  for (const c of configs) {
+    if (!c || !c.provider || !c.api_user) continue;
+    m.set(`${c.provider}_${c.api_user}`, c);
+  }
+  return Array.from(m.values()).sort((a, b) => a.provider.localeCompare(b.provider));
+}
+
+function buildFailedTemplateAccounts() {
+  const failedSites = Array.isArray(failedSitesReport.failed_sites) ? failedSitesReport.failed_sites : [];
+  const templates = [];
+
+  failedSites.forEach((site, idx) => {
+    const provider = String(site.provider || "unknown").trim();
+    if (!provider) return;
+    const rawApiUser = String(site.api_user || "").trim();
+    const apiUser = rawApiUser || `REPLACE_ME_${provider}_${idx + 1}`;
+    const accountName = site.account_name || `${provider}_${apiUser}`;
+
+    templates.push({
+      name: accountName,
+      provider: provider,
+      cookies: { session: "REPLACE_ME_SESSION" },
+      api_user: apiUser,
+    });
+  });
+
+  return dedupeByProviderApiUser(templates);
+}
+
+function renderFailedSitesPreview() {
+  const failedSites = Array.isArray(failedSitesReport.failed_sites) ? failedSitesReport.failed_sites : [];
+  if (!failedSites.length) {
+    failedSitesMeta.textContent = "0 个失败";
+    failedSitesPreview.textContent = "暂无失败站点数据";
+    return;
+  }
+
+  const generatedAt = failedSitesReport.generated_at || "";
+  const generatedText = generatedAt ? generatedAt.replace("T", " ").slice(0, 19) : "未知时间";
+  failedSitesMeta.textContent = `${failedSites.length} 个失败 · ${generatedText}`;
+
+  const lines = failedSites.slice(0, 8).map((site, idx) => {
+    const provider = site.provider || "unknown";
+    const account = site.account_name || "-";
+    const reason = String(site.reason || "").replace(/\s+/g, " ").slice(0, 60);
+    return `${idx + 1}. ${provider} / ${account}\n   ${reason}`;
+  });
+  if (failedSites.length > 8) {
+    lines.push(`... 还有 ${failedSites.length - 8} 个失败站点`);
+  }
+  failedSitesPreview.textContent = lines.join("\n");
+}
+
+async function loadFailedSitesReport(showStatus = true) {
+  try {
+    const url = `${chrome.runtime.getURL("failed_sites.json")}?t=${Date.now()}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    failedSitesReport = data && typeof data === "object" ? data : { failed_sites: [] };
+    if (!Array.isArray(failedSitesReport.failed_sites)) {
+      failedSitesReport.failed_sites = [];
+    }
+    renderFailedSitesPreview();
+    if (showStatus) {
+      setStatus(`📌 已加载失败站点 ${failedSitesReport.failed_sites.length} 个`, "info");
+    }
+  } catch (e) {
+    failedSitesReport = { failed_sites: [] };
+    renderFailedSitesPreview();
+    if (showStatus) {
+      setStatus("⚠️ 未读取到失败站点清单（请先 pull 最新仓库）", "error");
+    }
+  }
+}
+
+async function openFailedSites() {
+  const failedSites = Array.isArray(failedSitesReport.failed_sites) ? failedSitesReport.failed_sites : [];
+  if (!failedSites.length) {
+    setStatus("⚠️ 没有失败站点可打开", "error");
+    return;
+  }
+
+  const visited = new Set();
+  let opened = 0;
+  for (const site of failedSites) {
+    const target = site.login_url || site.oauth_login_url || site.site_url || "";
+    if (!target || visited.has(target)) continue;
+    visited.add(target);
+    await chrome.tabs.create({ url: target, active: false });
+    opened += 1;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  setStatus(`✅ 已打开 ${opened} 个失败站点页面`, "success");
+}
+
+async function copyFailedTemplate() {
+  const templates = buildFailedTemplateAccounts();
+  if (!templates.length) {
+    setStatus("⚠️ 失败站点模板为空", "error");
+    return;
+  }
+  await navigator.clipboard.writeText(JSON.stringify(templates, null, 2));
+  setStatus(`✅ 已复制失败站点模板（${templates.length} 条）`, "success");
+}
+
+async function copyNewapiAccountsForSecret() {
+  await loadSavedConfigs();
+  const localConfigs = Array.isArray(savedConfigs) ? savedConfigs : [];
+  const anyrouterTemplates = buildFailedTemplateAccounts().filter((x) => x.provider === "anyrouter");
+  const merged = dedupeByProviderApiUser([...localConfigs, ...anyrouterTemplates]);
+
+  if (!merged.length) {
+    setStatus("⚠️ 没有可导出的 NEWAPI_ACCOUNTS 数据", "error");
+    return;
+  }
+
+  await navigator.clipboard.writeText(JSON.stringify(merged, null, 2));
+  const placeholders = merged.filter((x) => String(x.cookies?.session || "").startsWith("REPLACE_ME")).length;
+  const suffix = placeholders > 0 ? `，含 ${placeholders} 条占位（需替换 session）` : "";
+  setStatus(`✅ 已复制 NEWAPI_ACCOUNTS（${merged.length} 条${suffix}）`, "success");
+}
+
 // DOM 元素
 const extractBtn = document.getElementById("extractBtn");
 const openAllBtn = document.getElementById("openAllBtn");
@@ -108,6 +236,12 @@ const sitesList = document.getElementById("sitesList");
 const resultsBox = document.getElementById("resultsBox");
 const resultsList = document.getElementById("resultsList");
 const outputBox = document.getElementById("outputBox");
+const refreshFailedBtn = document.getElementById("refreshFailedBtn");
+const openFailedBtn = document.getElementById("openFailedBtn");
+const copyFailedTemplateBtn = document.getElementById("copyFailedTemplateBtn");
+const copySecretBtn = document.getElementById("copySecretBtn");
+const failedSitesMeta = document.getElementById("failedSitesMeta");
+const failedSitesPreview = document.getElementById("failedSitesPreview");
 
 // 站点管理相关 DOM
 const manageSitesBtn = document.getElementById("manageSitesBtn");
@@ -464,6 +598,10 @@ clearBtn.addEventListener("click", clearConfigs);
 mergeToolBtn.addEventListener("click", openMergeTool);
 selectAllBtn.addEventListener("click", () => selectAll(true));
 selectNoneBtn.addEventListener("click", () => selectAll(false));
+refreshFailedBtn.addEventListener("click", () => loadFailedSitesReport(true));
+openFailedBtn.addEventListener("click", openFailedSites);
+copyFailedTemplateBtn.addEventListener("click", copyFailedTemplate);
+copySecretBtn.addEventListener("click", copyNewapiAccountsForSecret);
 
 // 站点管理事件绑定
 manageSitesBtn.addEventListener("click", openSiteManager);
@@ -599,6 +737,7 @@ async function deleteSite(siteId) {
 async function init() {
   await loadSitesConfig();
   renderSitesList();
+  await loadFailedSitesReport(false);
   
   const configs = await loadSavedConfigs();
   if (configs.length > 0) {
