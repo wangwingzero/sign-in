@@ -161,6 +161,69 @@ class PlatformManager:
         os.environ["BROWSER_ENGINE"] = "nodriver"
         os.environ["BROWSER_HEADLESS"] = "false"
 
+    @staticmethod
+    def _env_int(name: str, default: int, min_value: int = 0) -> int:
+        """读取整型环境变量（非法值回退默认值）。"""
+        try:
+            value = int(os.getenv(name, str(default)))
+            if value < min_value:
+                return default
+            return value
+        except Exception:
+            return default
+
+    @staticmethod
+    def _env_float(name: str, default: float, min_value: float = 0.0) -> float:
+        """读取浮点环境变量（非法值回退默认值）。"""
+        try:
+            value = float(os.getenv(name, str(default)))
+            if value < min_value:
+                return default
+            return value
+        except Exception:
+            return default
+
+    @staticmethod
+    def _is_retryable_network_message(message: str) -> bool:
+        """根据错误消息判断是否属于可重试网络错误。"""
+        if not message:
+            return False
+        msg = message.lower()
+        network_signatures = (
+            "winerror 1225",
+            "connection refused",
+            "connecterror",
+            "connect timeout",
+            "read timeout",
+            "timed out",
+            "network is unreachable",
+            "name or service not known",
+            "temporary failure in name resolution",
+            "remote host closed",
+            "connection reset",
+            "connection aborted",
+        )
+        return any(sig in msg for sig in network_signatures)
+
+    @classmethod
+    def _is_retryable_network_error(cls, err: Exception) -> bool:
+        """判断异常是否属于可重试网络错误。"""
+        if isinstance(
+            err,
+            (
+                httpx.ConnectError,
+                httpx.ConnectTimeout,
+                httpx.ReadTimeout,
+                httpx.WriteTimeout,
+                httpx.TimeoutException,
+                ConnectionError,
+                TimeoutError,
+                OSError,
+            ),
+        ):
+            return cls._is_retryable_network_message(str(err))
+        return cls._is_retryable_network_message(str(err))
+
     async def _auto_approve_linuxdo_oauth(self, tab) -> bool:
         """在 LinuxDO OAuth 授权页自动点击“允许/Authorize”按钮。"""
         try:
@@ -444,9 +507,25 @@ class PlatformManager:
         if not providers:
             return providers
 
-        timeout = httpx.Timeout(connect=4.0, read=6.0, write=6.0, pool=6.0)
-        limits = httpx.Limits(max_connections=20, max_keepalive_connections=10)
-        semaphore = asyncio.Semaphore(10)
+        connect_timeout = self._env_float("SITE_PROBE_CONNECT_TIMEOUT", 4.0, min_value=1.0)
+        read_timeout = self._env_float("SITE_PROBE_READ_TIMEOUT", 6.0, min_value=1.0)
+        probe_concurrency = self._env_int("SITE_PROBE_CONCURRENCY", 10, min_value=1)
+        timeout = httpx.Timeout(
+            connect=connect_timeout,
+            read=read_timeout,
+            write=read_timeout,
+            pool=read_timeout,
+        )
+        limits = httpx.Limits(
+            max_connections=max(10, probe_concurrency * 2),
+            max_keepalive_connections=max(5, probe_concurrency),
+        )
+        semaphore = asyncio.Semaphore(probe_concurrency)
+
+        logger.info(
+            "站点可用性探测参数: "
+            f"connect={connect_timeout}s, read={read_timeout}s, concurrency={probe_concurrency}"
+        )
 
         available: dict[str, ProviderConfig] = {}
         unavailable: list[tuple[str, str]] = []
@@ -778,7 +857,6 @@ class PlatformManager:
         account_name: str, linuxdo_username: str, linuxdo_password: str,
     ) -> CheckinResult:
         """在共享浏览器会话中对单个站点执行 OAuth 登录+签到"""
-        import httpx
         from platforms.newapi_browser import NewAPIBrowserCheckin
 
         # 创建 checker 实例（复用已有的浏览器，不重新登录 LinuxDO）
@@ -790,41 +868,67 @@ class PlatformManager:
         )
         checker._browser_manager = browser_mgr
 
-        try:
-            # 直接在共享 tab 上做 OAuth（跳过 LinuxDO 登录，已经登录了）
-            session_cookie, api_user = await checker._oauth_login_and_get_session(tab)
+        retry_count = self._env_int("OAUTH_NETWORK_RETRY_COUNT", 2, min_value=0)
+        backoff_base = self._env_float("OAUTH_NETWORK_RETRY_BACKOFF", 2.0, min_value=0.5)
+        attempt_total = retry_count + 1
 
-            if not session_cookie or not api_user:
+        for attempt in range(attempt_total):
+            try:
+                # 直接在共享 tab 上做 OAuth（跳过 LinuxDO 登录，已经登录了）
+                session_cookie, api_user = await checker._oauth_login_and_get_session(tab)
+
+                if not session_cookie or not api_user:
+                    return CheckinResult(
+                        platform=f"NewAPI ({provider_name})",
+                        account=account_name,
+                        status=CheckinStatus.FAILED,
+                        message="OAuth 登录失败，无法获取 session",
+                    )
+
+                # 用获取到的 session 签到
+                logger.info(f"[{account_name}] 使用新 session 签到...")
+                success, message, details = await checker._checkin_with_cookies(session_cookie, api_user)
+
+                details["login_method"] = "shared_oauth"
+                details["_cached_session"] = session_cookie
+                details["_cached_api_user"] = api_user
+
+                return CheckinResult(
+                    platform=f"NewAPI ({provider_name})",
+                    account=account_name,
+                    status=CheckinStatus.SUCCESS if success else CheckinStatus.FAILED,
+                    message=message,
+                    details=details,
+                )
+            except Exception as e:
+                retryable = self._is_retryable_network_error(e)
+                if retryable and attempt < retry_count:
+                    delay = backoff_base * (2 ** attempt)
+                    logger.warning(
+                        f"[{account_name}] 共享OAuth网络异常，{delay:.1f}s 后重试 "
+                        f"({attempt + 1}/{attempt_total}): {e}"
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+
+                if retryable:
+                    logger.error(
+                        f"[{account_name}] 共享OAuth网络不可达（重试{retry_count}次后失败）: {e}"
+                    )
+                    return CheckinResult(
+                        platform=f"NewAPI ({provider_name})",
+                        account=account_name,
+                        status=CheckinStatus.FAILED,
+                        message=f"OAuth 网络不可达: {str(e)}",
+                    )
+
+                logger.error(f"[{account_name}] 共享OAuth异常: {e}")
                 return CheckinResult(
                     platform=f"NewAPI ({provider_name})",
                     account=account_name,
                     status=CheckinStatus.FAILED,
-                    message="OAuth 登录失败，无法获取 session",
+                    message=f"OAuth 异常: {str(e)}",
                 )
-
-            # 用获取到的 session 签到
-            logger.info(f"[{account_name}] 使用新 session 签到...")
-            success, message, details = await checker._checkin_with_cookies(session_cookie, api_user)
-
-            details["login_method"] = "shared_oauth"
-            details["_cached_session"] = session_cookie
-            details["_cached_api_user"] = api_user
-
-            return CheckinResult(
-                platform=f"NewAPI ({provider_name})",
-                account=account_name,
-                status=CheckinStatus.SUCCESS if success else CheckinStatus.FAILED,
-                message=message,
-                details=details,
-            )
-        except Exception as e:
-            logger.error(f"[{account_name}] 共享OAuth异常: {e}")
-            return CheckinResult(
-                platform=f"NewAPI ({provider_name})",
-                account=account_name,
-                status=CheckinStatus.FAILED,
-                message=f"OAuth 异常: {str(e)}",
-            )
 
     async def _run_newapi_oauth_fallback(
         self, need_oauth: list[dict], linuxdo_username: str, linuxdo_password: str,
@@ -833,7 +937,10 @@ class PlatformManager:
         """回退模式：共享会话失败时，逐站独立启动浏览器"""
         from platforms.newapi_browser import browser_checkin_newapi
 
-        SITE_TIMEOUT = 180
+        site_timeout = 180
+        retry_count = self._env_int("OAUTH_NETWORK_RETRY_COUNT", 2, min_value=0)
+        backoff_base = self._env_float("OAUTH_NETWORK_RETRY_BACKOFF", 2.0, min_value=0.5)
+        attempt_total = retry_count + 1
         logger.warning(f"回退模式：逐站独立浏览器，{len(need_oauth)} 个站点")
 
         for idx, item in enumerate(need_oauth):
@@ -842,36 +949,88 @@ class PlatformManager:
 
             logger.info(f"[{idx+1}/{len(need_oauth)}] [{account_name}] 独立浏览器 OAuth...")
 
-            try:
-                result = await asyncio.wait_for(
-                    browser_checkin_newapi(
-                        provider_name=provider_name,
-                        linuxdo_username=linuxdo_username,
-                        linuxdo_password=linuxdo_password,
-                        cookies=None, api_user=None,
-                        account_name=account_name,
-                    ),
-                    timeout=SITE_TIMEOUT,
+            final_result: CheckinResult | None = None
+            for attempt in range(attempt_total):
+                try:
+                    result = await asyncio.wait_for(
+                        browser_checkin_newapi(
+                            provider_name=provider_name,
+                            linuxdo_username=linuxdo_username,
+                            linuxdo_password=linuxdo_password,
+                            cookies=None, api_user=None,
+                            account_name=account_name,
+                        ),
+                        timeout=site_timeout,
+                    )
+
+                    if (
+                        result.status == CheckinStatus.FAILED
+                        and self._is_retryable_network_message(result.message or "")
+                        and attempt < retry_count
+                    ):
+                        delay = backoff_base * (2 ** attempt)
+                        logger.warning(
+                            f"[{account_name}] 独立OAuth网络失败，{delay:.1f}s 后重试 "
+                            f"({attempt + 1}/{attempt_total}): {result.message}"
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+
+                    if result.status == CheckinStatus.SUCCESS and result.details:
+                        cached_session = result.details.pop("_cached_session", None)
+                        cached_api_user = result.details.pop("_cached_api_user", None)
+                        if cached_session and cached_api_user:
+                            self._cookie_cache.save(provider_name, account_name, cached_session, cached_api_user)
+
+                    final_result = result
+                    break
+
+                except asyncio.TimeoutError:
+                    if attempt < retry_count:
+                        delay = backoff_base * (2 ** attempt)
+                        logger.warning(
+                            f"[{account_name}] 独立OAuth超时，{delay:.1f}s 后重试 "
+                            f"({attempt + 1}/{attempt_total})"
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    final_result = CheckinResult(
+                        platform=f"NewAPI ({provider_name})",
+                        account=account_name,
+                        status=CheckinStatus.FAILED,
+                        message=f"OAuth 超时（>{site_timeout}s）",
+                    )
+                    break
+                except Exception as e:
+                    retryable = self._is_retryable_network_error(e)
+                    if retryable and attempt < retry_count:
+                        delay = backoff_base * (2 ** attempt)
+                        logger.warning(
+                            f"[{account_name}] 独立OAuth网络异常，{delay:.1f}s 后重试 "
+                            f"({attempt + 1}/{attempt_total}): {e}"
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    final_result = CheckinResult(
+                        platform=f"NewAPI ({provider_name})",
+                        account=account_name,
+                        status=CheckinStatus.FAILED,
+                        message=(
+                            f"OAuth 网络不可达: {str(e)}"
+                            if retryable
+                            else f"OAuth 异常: {str(e)}"
+                        ),
+                    )
+                    break
+
+            if final_result is None:
+                final_result = CheckinResult(
+                    platform=f"NewAPI ({provider_name})",
+                    account=account_name,
+                    status=CheckinStatus.FAILED,
+                    message="OAuth 未知失败",
                 )
-
-                if result.status == CheckinStatus.SUCCESS and result.details:
-                    cached_session = result.details.pop("_cached_session", None)
-                    cached_api_user = result.details.pop("_cached_api_user", None)
-                    if cached_session and cached_api_user:
-                        self._cookie_cache.save(provider_name, account_name, cached_session, cached_api_user)
-
-                results.append(result)
-
-            except asyncio.TimeoutError:
-                results.append(CheckinResult(
-                    platform=f"NewAPI ({provider_name})", account=account_name,
-                    status=CheckinStatus.FAILED, message=f"OAuth 超时（>{SITE_TIMEOUT}s）",
-                ))
-            except Exception as e:
-                results.append(CheckinResult(
-                    platform=f"NewAPI ({provider_name})", account=account_name,
-                    status=CheckinStatus.FAILED, message=f"OAuth 异常: {str(e)}",
-                ))
+            results.append(final_result)
 
     async def _run_newapi_with_accounts(self) -> list[CheckinResult]:
         """手动模式：使用 NEWAPI_ACCOUNTS 中预配置的账号签到"""
