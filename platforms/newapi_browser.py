@@ -149,27 +149,51 @@ class NewAPIBrowserCheckin:
             logger.warning(f"[{self.account_name}] {label} 失败: {e}")
             return False
 
+    @staticmethod
+    def _is_provider_auth_url(url: str) -> bool:
+        """判断当前 URL 是否仍处于登录/注册认证页。"""
+        url_lower = (url or "").lower()
+        return any(
+            key in url_lower
+            for key in ("/login", "/signin", "/sign-in", "/register", "/signup", "/sign-up")
+        )
+
     async def _is_provider_logged_in_dom(self, tab) -> bool:
-        """通过 DOM 判断站点是否已登录（用于 URL 仍停在 /login 的 SPA 场景）。"""
+        """通过 DOM 判断站点是否已登录（避免 /login /register 误判）。"""
         result = await self._safe_evaluate(
             tab,
             r"""
             (function() {
+                const path = (window.location && window.location.pathname ? window.location.pathname : '').toLowerCase();
+                if (path.includes('/login') || path.includes('/signin') || path.includes('/register') || path.includes('/signup')) {
+                    return false;
+                }
                 const text = (document.body && document.body.innerText ? document.body.innerText : '').toLowerCase();
-                const hasLoginInput = !!document.querySelector(
+                const hasAuthInput = !!document.querySelector(
                     'input[type="password"], input[name="password"], input[placeholder*="Password"], input[placeholder*="密码"]'
                 );
+                const hasAuthCta = !!document.querySelector(
+                    'button[type="submit"], .login-btn, .signin-btn, [href*="login"], [href*="signin"], [href*="register"]'
+                );
+                const hasOAuthHint = (
+                    text.includes('continue with linuxdo') ||
+                    text.includes('continue with github') ||
+                    text.includes('sign in') ||
+                    text.includes('log in')
+                );
+                const hasAuthForm = hasAuthInput || hasAuthCta || hasOAuthHint;
                 const hasUserMenu = !!document.querySelector(
-                    '.semi-avatar, .user-avatar, [class*="user-menu"], [class*="profile"]'
+                    '.semi-avatar, .user-avatar, [class*="avatar"], [class*="user-menu"], [class*="profile"], [class*="dropdown"]'
                 );
-                const hasConsoleHints = (
-                    text.includes('dashboard') ||
-                    text.includes('token manage') ||
-                    text.includes('token management') ||
-                    text.includes('wallet') ||
-                    text.includes('console')
+                const hasLogoutAction = (
+                    text.includes('logout') ||
+                    text.includes('sign out') ||
+                    text.includes('退出')
                 );
-                return !hasLoginInput && (hasUserMenu || hasConsoleHints);
+                const hasConsoleShell = !!document.querySelector(
+                    '[href*="dashboard"], [href*="console"], [href*="token"], [href*="wallet"], .semi-navigation, .ant-menu, .ant-layout-sider'
+                );
+                return !hasAuthForm && (hasLogoutAction || (hasUserMenu && hasConsoleShell));
             })()
             """,
             timeout=8,
@@ -185,7 +209,7 @@ class NewAPIBrowserCheckin:
     async def _checkin_with_cookies(
         self,
         session_cookie: str,
-        api_user: str,
+        api_user: str | None,
         extra_cookies: dict | None = None,
     ) -> tuple[bool, str, dict]:
         """使用 Cookie 方式签到（HTTP 请求）"""
@@ -194,7 +218,6 @@ class NewAPIBrowserCheckin:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "application/json",
             "Content-Type": "application/json",
-            self.provider.api_user_key: api_user,
         }
         cookies: dict[str, str] = {}
         if isinstance(extra_cookies, dict):
@@ -207,6 +230,33 @@ class NewAPIBrowserCheckin:
             )
         cookies["session"] = session_cookie
         details["cookie_names"] = sorted(list(cookies.keys()))
+        resolved_api_user = str(api_user).strip() if api_user else ""
+        if not resolved_api_user:
+            # 某些站点会把用户 ID 放在 cookie 中
+            for key in (
+                self.provider.api_user_key,
+                "api_user",
+                "api-user",
+                "new-api-user",
+                "user_id",
+                "uid",
+            ):
+                raw = cookies.get(key)
+                if raw and str(raw).strip():
+                    resolved_api_user = str(raw).strip()
+                    logger.info(f"[{self.account_name}] 从 cookie 键 {key} 推断 api_user: {resolved_api_user}")
+                    break
+
+        if not resolved_api_user:
+            resolved_api_user = await self._resolve_api_user_via_http(cookies)
+            if resolved_api_user:
+                logger.info(f"[{self.account_name}] 通过 HTTP 预探测补全 api_user: {resolved_api_user}")
+
+        if resolved_api_user:
+            headers[self.provider.api_user_key] = resolved_api_user
+            details["resolved_api_user"] = resolved_api_user
+        else:
+            details["resolved_api_user"] = None
 
         try:
             async with httpx.AsyncClient(timeout=30.0, cookies=cookies) as client:
@@ -217,25 +267,44 @@ class NewAPIBrowserCheckin:
                 response = await client.get(user_info_url, headers=headers)
 
                 if response.status_code == 200:
-                    data = response.json()
-                    if data.get("success"):
-                        user_data = data.get("data", {})
+                    try:
+                        data = response.json()
+                    except Exception:
+                        data = {}
+                    if isinstance(data, dict) and data.get("success") is False:
+                        details["failure_kind"] = "cookie_invalid"
+                        return False, f"Cookie 无效: {data.get('message')}", details
+
+                    inferred_api_user = self._extract_api_user_from_payload(data)
+                    if inferred_api_user and not resolved_api_user:
+                        resolved_api_user = inferred_api_user
+                        headers[self.provider.api_user_key] = resolved_api_user
+                        details["resolved_api_user"] = resolved_api_user
+                        logger.info(f"[{self.account_name}] 从 user_info 响应补全 api_user: {resolved_api_user}")
+
+                    user_data = data.get("data", {}) if isinstance(data, dict) else {}
+                    if isinstance(user_data, dict):
                         quota = round(user_data.get("quota", 0) / 500000, 2)
                         used_quota = round(user_data.get("used_quota", 0) / 500000, 2)
                         details["balance"] = f"${quota}"
                         details["used"] = f"${used_quota}"
                         logger.info(f"[{self.account_name}] 余额: ${quota}, 已用: ${used_quota}")
-                    else:
-                        return False, f"Cookie 无效: {data.get('message')}", details
                 elif response.status_code == 401:
+                    details["failure_kind"] = "cookie_expired"
                     return False, "Cookie 已过期", details
                 elif response.status_code == 403:
+                    details["failure_kind"] = "cookie_blocked"
                     return False, "HTTP 403 被拦截(Cookie过期或Cloudflare)", details
                 else:
+                    details["failure_kind"] = "cookie_http_error"
                     return False, f"HTTP {response.status_code}", details
 
                 # 执行签到
                 if self.provider.needs_manual_check_in():
+                    if not resolved_api_user:
+                        details["failure_kind"] = "api_user_missing"
+                        return False, "无法补全 api_user", details
+
                     checkin_url = f"{self.provider.domain}{self.provider.sign_in_path}"
                     logger.info(f"[{self.account_name}] 执行签到: {checkin_url}")
 
@@ -249,17 +318,91 @@ class NewAPIBrowserCheckin:
                             return True, msg or "签到成功", details
                         elif "已签到" in msg:
                             return True, msg, details
+                        details["failure_kind"] = "checkin_rejected"
                         return False, msg or "签到失败", details
                     elif response.status_code == 401:
+                        details["failure_kind"] = "checkin_401"
                         return False, "Cookie 已过期", details
+                    details["failure_kind"] = "checkin_http_error"
                     return False, f"HTTP {response.status_code}", details
                 return True, "签到成功（自动触发）", details
 
         except httpx.TimeoutException:
+            details["failure_kind"] = "http_timeout"
             return False, "请求超时", details
         except Exception as e:
             logger.error(f"[{self.account_name}] 签到请求失败: {e}")
+            details["failure_kind"] = "http_exception"
             return False, f"请求失败: {e}", details
+
+    @staticmethod
+    def _extract_api_user_from_payload(payload) -> str | None:
+        """从常见 NewAPI 响应结构中提取用户 ID。"""
+        if not isinstance(payload, dict):
+            return None
+        candidates = [
+            payload,
+            payload.get("data"),
+            payload.get("user"),
+            payload.get("result"),
+        ]
+        data = payload.get("data")
+        if isinstance(data, dict):
+            candidates.extend([data.get("user"), data.get("profile"), data.get("data")])
+
+        for node in candidates:
+            if not isinstance(node, dict):
+                continue
+            for key in ("id", "user_id", "userId", "uid"):
+                value = node.get(key)
+                if value is not None and str(value).strip():
+                    return str(value).strip()
+        return None
+
+    async def _resolve_api_user_via_http(self, cookies: dict[str, str]) -> str | None:
+        """通过若干常见接口补全 api_user（用于 session 已拿到但 id 缺失场景）。"""
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+        }
+        candidate_paths = [
+            self.provider.user_info_path,
+            "/api/user/self",
+            "/api/user/info",
+            "/api/user",
+            "/api/v1/user/self",
+            "/api/v1/user/info",
+        ]
+        # 去重且保持顺序
+        seen = set()
+        dedup_paths: list[str] = []
+        for path in candidate_paths:
+            if not path or path in seen:
+                continue
+            seen.add(path)
+            dedup_paths.append(path)
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0, cookies=cookies, follow_redirects=True) as client:
+                for path in dedup_paths:
+                    url = f"{self.provider.domain}{path}"
+                    try:
+                        response = await client.get(url, headers=headers)
+                    except Exception as e:
+                        logger.debug(f"[{self.account_name}] 预探测 {url} 失败: {e}")
+                        continue
+                    if response.status_code != 200:
+                        continue
+                    try:
+                        payload = response.json()
+                    except Exception:
+                        continue
+                    api_user = self._extract_api_user_from_payload(payload)
+                    if api_user:
+                        return api_user
+        except Exception as e:
+            logger.debug(f"[{self.account_name}] HTTP 补全 api_user 失败: {e}")
+        return None
 
     @staticmethod
     def _to_float(val) -> float:
@@ -815,13 +958,24 @@ class NewAPIBrowserCheckin:
                     logger.success(f"[{self.account_name}] 直接 OAuth 成功！URL: {current_url}")
                     # 多等 2 秒确保 cookie 设置完成
                     await asyncio.sleep(2)
-                    return await self._extract_session_from_browser(tab)
+                    extracted_session, extracted_api_user = await self._extract_session_from_browser(tab)
+                    if extracted_session:
+                        return extracted_session, extracted_api_user
+                    logger.warning(
+                        f"[{self.account_name}] 直接 OAuth 已返回站点但未提取到 session，转入标准 OAuth 流程"
+                    )
+                    break
 
             current_url = tab.target.url if hasattr(tab, "target") else ""
             if provider_host in current_url:
                 logger.success(f"[{self.account_name}] 直接 OAuth 成功（仍在 OAuth 路径）: {current_url}")
                 await asyncio.sleep(2)
-                return await self._extract_session_from_browser(tab)
+                extracted_session, extracted_api_user = await self._extract_session_from_browser(tab)
+                if extracted_session:
+                    return extracted_session, extracted_api_user
+                logger.warning(
+                    f"[{self.account_name}] 直接 OAuth 路径下未提取到 session，继续走标准 OAuth 流程"
+                )
             else:
                 logger.warning(f"[{self.account_name}] 直接 OAuth 未返回站点: {current_url}")
 
@@ -840,10 +994,17 @@ class NewAPIBrowserCheckin:
         # 检查是否已经登录
         current_url = tab.target.url if hasattr(tab, "target") else ""
         dom_logged_in = await self._is_provider_logged_in_dom(tab)
-        if (self.provider.domain in current_url and "login" not in current_url.lower()) or dom_logged_in:
-            logger.success(f"[{self.account_name}] 已登录，直接获取 session")
+        auth_url = self._is_provider_auth_url(current_url)
+        already_logged_hint = (self.provider.domain in current_url and not auth_url) or dom_logged_in
+        if already_logged_hint:
+            logger.success(f"[{self.account_name}] 命中已登录特征，先尝试直接提取 session")
             await self._save_debug_screenshot(tab, "already_logged_in")
-            return await self._extract_session_from_browser(tab)
+            extracted_session, extracted_api_user = await self._extract_session_from_browser(tab)
+            if extracted_session:
+                return extracted_session, extracted_api_user
+            logger.warning(
+                f"[{self.account_name}] 已登录特征疑似误判（未提取到 session），继续走标准 OAuth 按钮流程"
+            )
 
         # 等待 SPA 页面渲染（最多 5 秒）
         await asyncio.sleep(5)
@@ -1294,10 +1455,20 @@ class NewAPIBrowserCheckin:
             # 先确保在 provider 域名上（触发 session cookie 设置）
             current_url = tab.target.url if hasattr(tab, "target") else ""
             logger.info(f"[{self.account_name}] 当前 URL: {current_url}")
-            if provider_domain not in current_url:
+            if provider_domain not in current_url or self._is_provider_auth_url(current_url):
                 logger.info(f"[{self.account_name}] 导航到站点主页确保 session 设置...")
                 await self._safe_get(tab, self.provider.domain, timeout=45, label="ensure_provider_home")
                 await asyncio.sleep(3)
+                current_url = tab.target.url if hasattr(tab, "target") else ""
+                if self._is_provider_auth_url(current_url):
+                    # 某些站点在 /register 卡住，补一次 console 跳转触发后端会话
+                    await self._safe_get(
+                        tab,
+                        f"{self.provider.domain}/console",
+                        timeout=20,
+                        label="ensure_provider_console",
+                    )
+                    await asyncio.sleep(2)
 
             # 先尝试从 JS document.cookie 获取（最直接）
             try:
@@ -1334,7 +1505,15 @@ class NewAPIBrowserCheckin:
 
                 # 按 provider 域名过滤，查找 session cookie
                 # NewAPI 站点的 session cookie 可能叫不同的名字
-                session_cookie_names = ["session", "_session", "connect.sid", "token", "auth_token"]
+                session_cookie_names = [
+                    "session",
+                    "_session",
+                    "connect.sid",
+                    "token",
+                    "auth_token",
+                    "sl-session",
+                    "sl_session",
+                ]
                 for cookie in all_cookies:
                     cookie_domain = cookie.domain or ""
                     # 匹配 provider 域名（包括子域名）
@@ -1396,9 +1575,12 @@ class NewAPIBrowserCheckin:
                                 continue
                             if cookie.name and cookie.value:
                                 runtime_cookies[str(cookie.name)] = str(cookie.value)
-                            if cookie.name == "session" and cookie.value:
+                            if cookie.name in session_cookie_names and cookie.value:
                                 session_cookie = cookie.value
-                                logger.success(f"[{self.account_name}] 直接 OAuth 登录获取到 session: {session_cookie[:30]}...")
+                                logger.success(
+                                    f"[{self.account_name}] 直接 OAuth 登录获取到 session({cookie.name}): "
+                                    f"{session_cookie[:30]}..."
+                                )
                                 break
 
                         if session_cookie:
@@ -1432,6 +1614,8 @@ class NewAPIBrowserCheckin:
                         return null;
                     })()
                 """, timeout=8, label="read_api_user_local_storage", default=None)
+                if isinstance(api_user, dict):
+                    api_user = api_user.get("value")
                 if api_user:
                     logger.info(f"[{self.account_name}] 从 localStorage 获取到 api_user: {api_user}")
 
@@ -1453,6 +1637,8 @@ class NewAPIBrowserCheckin:
                             return null;
                         }})()
                     """, timeout=12, label="fetch_api_user_from_self_api", default=None)
+                    if isinstance(user_info, dict):
+                        user_info = user_info.get("value")
                     if user_info:
                         api_user = user_info
                         logger.info(f"[{self.account_name}] 从 API 获取到 api_user: {api_user}")
@@ -1549,12 +1735,20 @@ class NewAPIBrowserCheckin:
             # OAuth 登录并获取 session
             session_cookie, api_user = await self._oauth_login_and_get_session(tab)
 
-            if not session_cookie or not api_user:
+            if not session_cookie:
+                details = {
+                    "failure_kind": "session_missing",
+                    "runtime_cookie_keys": sorted(list(self._runtime_cookies.keys())),
+                }
+                current_url = tab.target.url if hasattr(tab, "target") else ""
+                if current_url:
+                    details["last_url"] = current_url
                 return CheckinResult(
                     platform=f"NewAPI ({self.provider_name})",
                     account=self.account_name,
                     status=CheckinStatus.FAILED,
                     message="OAuth 登录失败，无法获取 session",
+                    details=details,
                 )
 
             # 3. 使用新获取的 session 签到
@@ -1569,10 +1763,10 @@ class NewAPIBrowserCheckin:
             self._login_method = "oauth"
             details["login_method"] = "oauth"
             details["new_session"] = session_cookie[:20] + "..."
-            details["new_api_user"] = api_user
+            details["new_api_user"] = api_user or details.get("resolved_api_user")
             # 存储完整凭据，供 manager 提取并缓存（下次可直接用 Cookie+API）
             details["_cached_session"] = session_cookie
-            details["_cached_api_user"] = api_user
+            details["_cached_api_user"] = (api_user or details.get("resolved_api_user") or "")
             details["_cached_cookies"] = runtime_cookies or {"session": session_cookie}
 
             return CheckinResult(
