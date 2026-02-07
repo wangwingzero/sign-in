@@ -233,6 +233,7 @@ class LinuxDOAdapter(BasePlatformAdapter):
         import os
 
         engine = get_browser_engine()
+        fallback_engine = os.environ.get("BROWSER_FALLBACK_ENGINE", "patchright").lower()
         logger.info(f"[{self.account_name}] 使用浏览器引擎: {engine}")
 
         # CI 环境检测
@@ -247,24 +248,55 @@ class LinuxDOAdapter(BasePlatformAdapter):
             headless = False
             logger.info(f"[{self.account_name}] CI 环境检测到 DISPLAY={os.environ.get('DISPLAY')}，使用非 headless 模式")
 
-        # CI 环境中 nodriver 启动不稳定，增加重试次数到 5 次
-        max_retries = 5 if is_ci else 3
-        self._browser_manager = BrowserManager(engine=engine, headless=headless)
-        await self._browser_manager.start(max_retries=max_retries)
+        # 构建引擎尝试顺序：优先主引擎，nodriver 失败时可回退到 patchright
+        engine_candidates: list[str] = [engine]
+        if (
+            engine == "nodriver"
+            and fallback_engine in ("drissionpage", "camoufox", "patchright")
+            and fallback_engine != engine
+        ):
+            engine_candidates.append(fallback_engine)
 
-        # 获取实际使用的引擎
-        actual_engine = self._browser_manager.engine
+        last_error: Exception | None = None
 
-        try:
-            if actual_engine == "nodriver":
-                return await self._login_nodriver()
-            elif actual_engine == "drissionpage":
-                return await self._login_drissionpage()
-            else:
-                return await self._login_playwright()
-        except Exception as e:
-            logger.error(f"[{self.account_name}] 登录失败: {e}")
-            return False
+        for idx, candidate in enumerate(engine_candidates):
+            if idx > 0:
+                logger.warning(f"[{self.account_name}] 主引擎失败，回退到 {candidate} 重试登录")
+
+            # CI 环境中 nodriver 启动不稳定，增加重试次数到 5 次
+            max_retries = 5 if (is_ci and candidate == "nodriver") else 3
+
+            try:
+                self._browser_manager = BrowserManager(engine=candidate, headless=headless)
+                await self._browser_manager.start(max_retries=max_retries)
+
+                # 获取实际使用的引擎（兼容 BrowserManager 内部 fallback）
+                actual_engine = self._browser_manager.engine
+
+                if actual_engine == "nodriver":
+                    success = await self._login_nodriver()
+                elif actual_engine == "drissionpage":
+                    success = await self._login_drissionpage()
+                else:
+                    success = await self._login_playwright()
+
+                if success:
+                    return True
+
+                logger.warning(f"[{self.account_name}] 使用引擎 {actual_engine} 登录失败")
+            except Exception as e:
+                last_error = e
+                logger.error(f"[{self.account_name}] 使用引擎 {candidate} 登录失败: {e}")
+            finally:
+                # 仅在还要继续尝试下一引擎时清理当前浏览器
+                if idx < len(engine_candidates) - 1 and self._browser_manager:
+                    with contextlib.suppress(Exception):
+                        await self._browser_manager.close()
+                    self._browser_manager = None
+
+        if last_error:
+            logger.error(f"[{self.account_name}] 浏览器登录最终失败: {last_error}")
+        return False
 
     async def _wait_for_cloudflare_nodriver(self, tab, timeout: int = 60) -> bool:
         """等待 Cloudflare 挑战完成（nodriver 专用，支持 Turnstile 点击）

@@ -30,7 +30,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
-          version: "latest"
+          version: "0.8.15"
 
       # 设置 Python
       - name: Set up Python
@@ -57,6 +57,7 @@ jobs:
         env:
           # 浏览器引擎配置
           BROWSER_ENGINE: nodriver
+          BROWSER_FALLBACK_ENGINE: patchright
           DISPLAY: ":99"
           
           # LinuxDO 账号配置
