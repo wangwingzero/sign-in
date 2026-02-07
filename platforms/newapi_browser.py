@@ -198,6 +198,35 @@ class NewAPIBrowserCheckin:
             return float(val.get('value', 0))
         return float(val)
 
+    @staticmethod
+    def _env_int(name: str, default: int, min_value: int = 1) -> int:
+        """读取整型环境变量，非法值时回退默认值。"""
+        raw = os.environ.get(name)
+        if raw is None or raw == "":
+            return default
+        try:
+            value = int(raw)
+            return max(value, min_value)
+        except Exception:
+            return default
+
+    @staticmethod
+    def _env_int_list(name: str, default: list[int], min_value: int = 1) -> list[int]:
+        """读取逗号分隔的整型列表环境变量。"""
+        raw = os.environ.get(name, "").strip()
+        if not raw:
+            return default
+        values: list[int] = []
+        for part in raw.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                values.append(max(int(part), min_value))
+            except Exception:
+                continue
+        return values or default
+
     async def _wait_for_cloudflare(self, tab, timeout: int = 60) -> bool:
         """等待 Cloudflare 挑战完成（支持 5 秒盾和 Turnstile 验证）
 
@@ -217,38 +246,42 @@ class NewAPIBrowserCheckin:
             try:
                 title = await tab.evaluate("document.title")
                 title_lower = title.lower() if title else ""
+                current_url = await tab.evaluate("window.location.href")
+                current_url_lower = current_url.lower() if current_url else ""
 
                 # 检测是否仍在 Cloudflare 挑战页面（标题匹配）
                 cf_indicators = [
                     "just a moment", "checking your browser", "please wait",
-                    "verifying", "checking", "challenge",
+                    "verifying", "checking", "challenge", "attention required",
                     "请稍候", "验证", "确认",
                 ]
                 is_cf_title = any(ind in title_lower for ind in cf_indicators)
+                is_cf_url = "/cdn-cgi/challenge" in current_url_lower or "challenges.cloudflare.com" in current_url_lower
+
+                # 经验：标题已经回到 LinuxDO 正常页时，优先判定通过，避免误判卡死。
+                # 这里不依赖宽泛文本匹配，避免把普通正文误判成挑战页。
+                if "linux do" in title_lower and not is_cf_title and not is_cf_url:
+                    logger.success(f"[{self.account_name}] Cloudflare 验证通过！")
+                    await self._save_debug_screenshot(tab, "cf_passed")
+                    return True
 
                 # 检测 Turnstile iframe 或容器是否存在（DOM 匹配）
                 has_cf_element = await tab.evaluate(r"""
                     (function() {
-                        // 方法1: 查找任何 cloudflare 相关的 iframe
+                        // 方法1: 查找 cloudflare challenge iframe
                         const iframes = document.querySelectorAll('iframe');
                         for (const iframe of iframes) {
                             const src = (iframe.src || '').toLowerCase();
-                            if (src.includes('cloudflare')) return true;
+                            if (src.includes('cloudflare') || src.includes('challenges.cloudflare.com')) return true;
                         }
-                        // 方法2: 查找 Turnstile 容器
-                        if (document.querySelector('.cf-turnstile, div[data-sitekey], #cf-turnstile, #challenge-running, #challenge-stage')) return true;
-                        // 方法3: 查找验证相关文字（覆盖中英文）
-                        const bodyText = document.body?.innerText || '';
-                        const cfTexts = [
-                            '确认您是真人', '验证您是真人', '验证您是否是真人',
-                            '请完成以下操作', '需要先检查您的连接',
-                            'verify you are human', 'checking if the site connection is secure'
-                        ];
-                        return cfTexts.some(t => bodyText.toLowerCase().includes(t.toLowerCase()));
+                        // 方法2: 查找 Cloudflare 挑战容器（仅精确 selector，避免过度匹配正文文本）
+                        return !!document.querySelector(
+                            '.cf-turnstile, [name=\"cf-turnstile-response\"], #cf-turnstile, #challenge-running, #challenge-stage, #cf-wrapper'
+                        );
                     })()
                 """)
 
-                is_cf_page = is_cf_title or has_cf_element
+                is_cf_page = is_cf_title or is_cf_url or has_cf_element
 
                 if not is_cf_page and title:
                     logger.success(f"[{self.account_name}] Cloudflare 验证通过！")
@@ -388,11 +421,21 @@ class NewAPIBrowserCheckin:
         Returns:
             是否通过 Cloudflare 验证
         """
-        for attempt in range(max_retries):
-            logger.info(f"[{self.account_name}] Cloudflare 验证尝试 {attempt + 1}/{max_retries}...")
+        effective_retries = self._env_int("NEWAPI_CF_MAX_RETRIES", max_retries, min_value=1)
+        timeout_first = self._env_int("NEWAPI_CF_TIMEOUT_FIRST", 30, min_value=10)
+        timeout_retry = self._env_int("NEWAPI_CF_TIMEOUT_RETRY", 20, min_value=10)
+        retry_delays = self._env_int_list("NEWAPI_CF_RETRY_DELAYS", [5, 15, 25, 35], min_value=1)
 
-            # 每次等待 15-20 秒，不要太长（CF 要么很快过，要么需要刷新重来）
-            timeout = 20 if attempt == 0 else 15
+        logger.info(
+            f"[{self.account_name}] Cloudflare 参数: retries={effective_retries}, "
+            f"timeout_first={timeout_first}s, timeout_retry={timeout_retry}s"
+        )
+
+        for attempt in range(effective_retries):
+            logger.info(f"[{self.account_name}] Cloudflare 验证尝试 {attempt + 1}/{effective_retries}...")
+
+            # 经验：第一轮给更长时间，后续走短超时 + 刷新重试。
+            timeout = timeout_first if attempt == 0 else timeout_retry
 
             # 等待 Cloudflare 验证
             cf_passed = await self._wait_for_cloudflare(tab, timeout=timeout)
@@ -403,15 +446,15 @@ class NewAPIBrowserCheckin:
                 return True
 
             # 最后一次尝试失败，不再重试
-            if attempt >= max_retries - 1:
-                logger.error(f"[{self.account_name}] Cloudflare 验证失败，已重试 {max_retries} 次")
+            if attempt >= effective_retries - 1:
+                logger.error(f"[{self.account_name}] Cloudflare 验证失败，已重试 {effective_retries} 次")
                 return False
 
             # 短暂等待后刷新页面重来（核心：让 nodriver 有新的机会绕过 CF）
-            wait_time = 3 + attempt * 2  # 3s, 5s, 7s, 9s 递增
+            wait_time = retry_delays[attempt] if attempt < len(retry_delays) else retry_delays[-1]
             logger.warning(
                 f"[{self.account_name}] Cloudflare 未通过，"
-                f"等待 {wait_time}s 后刷新重试（{attempt + 2}/{max_retries}）..."
+                f"等待 {wait_time}s 后刷新重试（{attempt + 2}/{effective_retries}）..."
             )
             await asyncio.sleep(wait_time)
 

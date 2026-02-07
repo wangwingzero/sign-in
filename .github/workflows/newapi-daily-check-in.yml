@@ -30,7 +30,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
-          version: "latest"
+          version: "0.8.15"
       
       # 设置 Python
       - name: Set up Python
@@ -75,6 +75,15 @@ jobs:
           # Debug 模式（设置为 true 开启截图和详细日志）
           # DEBUG: "true"
           NEWAPI_DEBUG: ${{ github.event.inputs.debug || 'false' }}
+          DEBUG: ${{ github.event.inputs.debug || 'false' }}
+          DEBUG_MODE: ${{ github.event.inputs.debug || 'false' }}
+
+          # Cloudflare 参数（可通过环境变量在代码中读取）
+          # 经验：首轮等待更久，后续短超时+刷新，降低误判和抖动
+          NEWAPI_CF_MAX_RETRIES: "5"
+          NEWAPI_CF_TIMEOUT_FIRST: "45"
+          NEWAPI_CF_TIMEOUT_RETRY: "30"
+          NEWAPI_CF_RETRY_DELAYS: "6,18,30,45"
           
           # LinuxDO 账户（必填 - 自动模式只需要这个！）
           # JSON 格式: [{"username": "email", "password": "pass", "name": "显示名"}]
@@ -138,12 +147,20 @@ jobs:
           BARK_SERVER: ${{ secrets.BARK_SERVER }}
         run: |
           set -o pipefail
+          RUN_DEBUG="${{ github.event.inputs.debug || 'false' }}"
+          EXTRA_ARGS=""
+          if [ "$RUN_DEBUG" = "true" ]; then
+            EXTRA_ARGS="--debug"
+            echo "[debug] manual debug mode enabled"
+            echo "[debug] engine=$BROWSER_ENGINE headless=$BROWSER_HEADLESS display=$DISPLAY"
+            echo "[debug] cf retries=$NEWAPI_CF_MAX_RETRIES first=$NEWAPI_CF_TIMEOUT_FIRST retry=$NEWAPI_CF_TIMEOUT_RETRY delays=$NEWAPI_CF_RETRY_DELAYS"
+          fi
           # 使用 xvfb-run 启动，模拟显示器绕过 Cloudflare headless 检测
           # 只运行 newapi 签到，不运行 LinuxDO 浏览（浏览帖子用 linuxdo-browse.yml）
           if [ -n "${{ github.event.inputs.platform }}" ]; then
-            xvfb-run --server-args="-screen 0 1920x1080x24" uv run python main.py --platform ${{ github.event.inputs.platform }} 2>&1 | tee run_newapi.log
+            xvfb-run --server-args="-screen 0 1920x1080x24" uv run python main.py --platform ${{ github.event.inputs.platform }} $EXTRA_ARGS 2>&1 | tee run_newapi.log
           else
-            xvfb-run --server-args="-screen 0 1920x1080x24" uv run python main.py --platform newapi 2>&1 | tee run_newapi.log
+            xvfb-run --server-args="-screen 0 1920x1080x24" uv run python main.py --platform newapi $EXTRA_ARGS 2>&1 | tee run_newapi.log
           fi
 
       - name: Append runtime summary
@@ -163,17 +180,8 @@ jobs:
             if [ -f scripts/chrome_extension/failed_sites.json ]; then
               echo "### Failed Sites Report"
               echo '```json'
-              python - <<'PY'
-              import json
-              from pathlib import Path
-              p = Path("scripts/chrome_extension/failed_sites.json")
-              data = json.loads(p.read_text(encoding="utf-8"))
-              print(json.dumps({
-                  "generated_at": data.get("generated_at"),
-                  "failed_count": data.get("failed_count", 0),
-                  "sample": (data.get("failed_sites") or [])[:5],
-              }, ensure_ascii=False, indent=2))
-              PY
+              # 避免在 YAML 缩进脚本里使用 heredoc，防止 EOF/分隔符缩进导致语法错误
+              python -c "import json; from pathlib import Path; p=Path('scripts/chrome_extension/failed_sites.json'); data=json.loads(p.read_text(encoding='utf-8')); print(json.dumps({'generated_at': data.get('generated_at'), 'failed_count': data.get('failed_count', 0), 'sample': (data.get('failed_sites') or [])[:5]}, ensure_ascii=False, indent=2))"
               echo '```'
             else
               echo "### Failed Sites Report"
@@ -182,6 +190,9 @@ jobs:
             echo
             echo "### Key Log Lines"
             grep -E "LDOH|站点可用性过滤|签到结束|OAuth 网络不可达|WinError 1225" run_newapi.log | tail -n 40 || true
+            echo
+            echo "### Error/Warning Snapshot"
+            grep -E "ERROR|WARNING|Cloudflare|401|403|429|Timeout|超时|OAuth" run_newapi.log | tail -n 120 || true
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit failed sites report for extension
