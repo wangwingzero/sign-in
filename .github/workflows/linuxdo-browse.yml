@@ -34,7 +34,7 @@ jobs:
 
       # 设置 Python
       - name: Set up Python
-        run: uv python install 3.12
+        run: uv python install 3.12.12
 
       # 安装依赖
       - name: Install dependencies
@@ -57,16 +57,6 @@ jobs:
         env:
           # 浏览器引擎配置
           BROWSER_ENGINE: nodriver
-          # 保持 nodriver 主链路，不默认回退到其他引擎
-          BROWSER_FALLBACK_ENGINE: ""
-          # Cloudflare 重试调优（nodriver）
-          LINUXDO_CF_MAX_RETRIES: "5"
-          LINUXDO_CF_TIMEOUT_FIRST: "75"
-          LINUXDO_CF_TIMEOUT_RETRY: "55"
-          LINUXDO_CF_RETRY_DELAYS: "6,18,30,45"
-          # 在单次工作流中复用 nodriver profile，提升连续挑战通过率
-          LINUXDO_NODRIVER_PERSIST_PROFILE: "true"
-          LINUXDO_NODRIVER_PROFILE_DIR: ".nodriver_profiles"
           DISPLAY: ":99"
           
           # LinuxDO 账号配置

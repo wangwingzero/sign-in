@@ -16,6 +16,7 @@ Discourse API:
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import os
 import random
@@ -269,17 +270,12 @@ class LinuxDOAdapter(BasePlatformAdapter):
             try:
                 user_data_dir = None
                 if candidate == "nodriver":
-                    persist_profile = os.environ.get("LINUXDO_NODRIVER_PERSIST_PROFILE", "true").lower() == "true"
+                    persist_profile = os.environ.get("LINUXDO_NODRIVER_PERSIST_PROFILE", "false").lower() == "true"
                     if persist_profile:
                         profile_root = Path(os.environ.get("LINUXDO_NODRIVER_PROFILE_DIR", ".nodriver_profiles"))
                         profile_root.mkdir(parents=True, exist_ok=True)
-                        safe_account_name = "".join(
-                            ch if ch.isalnum() or ch in ("-", "_", ".") else "_"
-                            for ch in self.account_name
-                        ).strip("._")
-                        if not safe_account_name:
-                            safe_account_name = "default"
-                        user_data_dir = str(profile_root / safe_account_name)
+                        account_key = hashlib.sha1(self.account_name.encode("utf-8")).hexdigest()[:16]
+                        user_data_dir = str(profile_root / f"acct_{account_key}")
                         logger.info(f"[{self.account_name}] nodriver 复用配置目录: {user_data_dir}")
 
                 self._browser_manager = BrowserManager(
