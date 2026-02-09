@@ -1418,22 +1418,31 @@ class PlatformManager:
 
     @staticmethod
     def _match_seed_for_linuxdo(
-        seeds: list[AnyRouterAccount], linuxdo_name: str
+        seeds: list[AnyRouterAccount], linuxdo_name: str, account_index: int = 0,
     ) -> AnyRouterAccount | None:
-        """从多个 seed 中匹配最适合当前 LinuxDO 账号的 seed。
+        """从多个 seed 中匹配当前 LinuxDO 账号的 seed。
 
         匹配优先级：
         1. seed.name 包含 linuxdo_name（如 seed='主账号_anyrouter', linuxdo='主账号'）
-        2. 未匹配过的第一个 seed（兜底）
+        2. 按 LinuxDO 账号轮次索引选择（第 N 个 LinuxDO 账号用第 N 个 seed）
+        3. 兜底：第一个 seed
         """
+        if not seeds:
+            return None
+
         ld_lower = linuxdo_name.lower()
-        # 优先精确名称匹配
+        # 优先名称匹配
         for seed in seeds:
             seed_name = (seed.name or "").lower()
-            if ld_lower in seed_name or seed_name in ld_lower:
+            if ld_lower and seed_name and (ld_lower in seed_name or seed_name in ld_lower):
                 return seed
-        # 兜底：返回第一个
-        return seeds[0] if seeds else None
+
+        # 按轮次索引选择（不同 LinuxDO 账号用不同 seed，支持任意命名）
+        if account_index < len(seeds):
+            return seeds[account_index]
+
+        # 兜底：第一个
+        return seeds[0]
 
     async def _run_newapi_auto_oauth(
         self,
@@ -1689,7 +1698,7 @@ class PlatformManager:
             # 1. 优先尝试 NEWAPI_ACCOUNTS seed cookie（补充来源，不是主流程）
             # 支持多账号：按 LinuxDO 账号名匹配对应的 seed（同 provider 可能有多个不同用户）
             seed_list = seed_accounts.get(provider_name)
-            seed_account = self._match_seed_for_linuxdo(seed_list, linuxdo_name) if seed_list else None
+            seed_account = self._match_seed_for_linuxdo(seed_list, linuxdo_name, account_index) if seed_list else None
             if seed_account:
                 logger.info(f"[{account_name}] 发现 NEWAPI_ACCOUNTS seed（api_user={seed_account.api_user}），优先尝试")
                 try:
