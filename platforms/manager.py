@@ -238,6 +238,7 @@ class PlatformManager:
                     "username": acc.username,
                     "password": acc.password,
                     "name": acc.name,
+                    "checkin_sites": acc.checkin_sites,  # 空=全部站点，非空=仅指定站点
                 })
         if self._linuxdo_accounts:
             logger.info(f"已加载 {len(self._linuxdo_accounts)} 个 LinuxDO 账户用于浏览器回退登录")
@@ -325,6 +326,64 @@ class PlatformManager:
             providers_to_test[name] = provider_obj
 
         return providers_to_test
+
+    def _export_available_sites_list(
+        self, providers: dict[str, "ProviderConfig"], ldoh_status: str
+    ) -> None:
+        """导出可用站点列表到 000/可用站点列表.md（自动更新部分）。
+
+        在每次签到运行后自动更新，方便用户查看当前可用的站点 ID 和 URL，
+        用于配置 checkin_sites 字段。
+        """
+        sites_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "000", "可用站点列表.md")
+        if not os.path.exists(sites_file):
+            logger.debug("000/可用站点列表.md 不存在，跳过导出")
+            return
+
+        try:
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            source = "LDOH 同步" if ldoh_status == "success" else "本地 DEFAULT_PROVIDERS"
+
+            lines = [
+                f"**更新时间**: {now_str}  ",
+                f"**数据来源**: {source}  ",
+                f"**可用站点数**: {len(providers)}",
+                "",
+                "| 站点 ID | 名称 | URL |",
+                "|---------|------|-----|",
+            ]
+            for name, prov in sorted(providers.items()):
+                display_name = prov.name or name
+                domain = prov.domain or ""
+                lines.append(f"| `{name}` | {display_name} | {domain} |")
+
+            auto_content = "\n".join(lines)
+
+            with open(sites_file, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            start_marker = "<!-- AUTO_SITES_START -->"
+            end_marker = "<!-- AUTO_SITES_END -->"
+            start_idx = content.find(start_marker)
+            end_idx = content.find(end_marker)
+
+            if start_idx == -1 or end_idx == -1:
+                logger.debug("000/可用站点列表.md 中未找到 AUTO_SITES 标记，跳过导出")
+                return
+
+            new_content = (
+                content[:start_idx + len(start_marker)]
+                + "\n"
+                + auto_content
+                + "\n"
+                + content[end_idx:]
+            )
+
+            with open(sites_file, "w", encoding="utf-8") as f:
+                f.write(new_content)
+            logger.info(f"已导出 {len(providers)} 个可用站点到 000/可用站点列表.md")
+        except Exception as e:
+            logger.debug(f"导出可用站点列表失败（非关键）: {e}")
 
     @staticmethod
     def _force_nodriver_headed_for_oauth() -> None:
@@ -1390,6 +1449,7 @@ class PlatformManager:
         linuxdo_username = linuxdo_account["username"]
         linuxdo_password = linuxdo_account["password"]
         linuxdo_name = linuxdo_account.get("name", linuxdo_username)
+        checkin_sites: list[str] = linuxdo_account.get("checkin_sites") or []
         account_progress = (
             f"{account_index + 1}/{account_total}"
             if account_total > 0
@@ -1484,6 +1544,11 @@ class PlatformManager:
         providers_to_test = await self._filter_available_providers(providers_to_test)
         stats["candidate_after_probe"] = len(providers_to_test)
         stats["candidate_skipped_by_probe"] = int(stats["candidate_total"]) - len(providers_to_test)
+
+        # 导出全部可用站点列表到 000/可用站点列表.md（仅首个账号执行，避免重复写入）
+        if account_index == 0:
+            self._export_available_sites_list(providers_to_test, stats.get("ldoh_sync_status", ""))
+
         if not providers_to_test:
             logger.warning("可用站点数为 0，跳过本轮 NewAPI 自动签到")
             try:
@@ -1493,6 +1558,34 @@ class PlatformManager:
                 logger.debug(f"关闭共享浏览器失败（可忽略）: {e}")
             self._log_auto_oauth_summary(stats, results)
             return results
+
+        # 按 checkin_sites 过滤：非空时仅保留指定站点，空则保留全部（默认行为）
+        if checkin_sites:
+            checkin_set = {s.strip().lower() for s in checkin_sites if s.strip()}
+            before_count = len(providers_to_test)
+            providers_to_test = {
+                name: prov for name, prov in providers_to_test.items()
+                if name.lower() in checkin_set
+            }
+            skipped_names = checkin_set - {n.lower() for n in providers_to_test}
+            if skipped_names:
+                logger.warning(
+                    f"[{linuxdo_name}] checkin_sites 中以下站点未在可用列表中: {sorted(skipped_names)}"
+                )
+            logger.info(
+                f"[{linuxdo_name}] checkin_sites 过滤: {before_count} → {len(providers_to_test)} 个站点 "
+                f"(指定: {sorted(checkin_set)})"
+            )
+            if not providers_to_test:
+                logger.warning(f"[{linuxdo_name}] checkin_sites 过滤后无可用站点，跳过")
+                try:
+                    await browser_mgr.close()
+                except Exception:
+                    pass
+                self._log_auto_oauth_summary(stats, results)
+                return results
+        else:
+            logger.info(f"[{linuxdo_name}] checkin_sites 未设置，签到全部可用站点")
 
         # 统计需要浏览器 OAuth 的站点（无缓存或缓存失效）
         need_oauth = []

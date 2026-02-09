@@ -284,12 +284,17 @@ class LinuxDOAccount:
     - name: 账号显示名称（可选）
     - browse_minutes: 浏览时长（分钟，可选，默认 20）
     - sites: 要签到的站点列表（可选，默认空，仅浏览主站）
+    - checkin_sites: 要签到的 NewAPI 站点列表（可选）
+        - 空列表 / 不设置 → 签到所有可用站点（默认行为）
+        - 非空列表 → 仅签到指定站点，如 ["kfcapi", "duckcoding", "runanytime"]
+        - 站点 ID 见 DEFAULT_PROVIDERS 字典的 key
     """
 
     username: str | None = None
     password: str | None = None
     cookies: dict | str | None = None  # Cookie 优先登录
     sites: list[str] = field(default_factory=list)  # 默认不签到任何站点，仅浏览主站
+    checkin_sites: list[str] = field(default_factory=list)  # 空=签到所有站点，非空=仅签到指定站点
     browse_minutes: int = 20  # 浏览时长（分钟），默认 20 分钟
     name: str | None = None
 
@@ -299,6 +304,11 @@ class LinuxDOAccount:
         name = data.get("name") or data.get("username") or f"LinuxDO Account {index + 1}"
         # 默认不签到任何站点（仅浏览主站）
         sites = data.get("sites", [])
+
+        # checkin_sites: 空列表=签到所有站点（默认），非空=仅签到指定站点
+        checkin_sites = data.get("checkin_sites", [])
+        if not isinstance(checkin_sites, list):
+            checkin_sites = []
 
         # browse_minutes 默认 20 分钟
         browse_minutes = data.get("browse_minutes", 20)
@@ -311,6 +321,7 @@ class LinuxDOAccount:
             password=data.get("password"),
             cookies=cookies,
             sites=sites,
+            checkin_sites=checkin_sites,
             browse_minutes=browse_minutes,
             name=name,
         )
@@ -703,9 +714,10 @@ class AppConfig:
         {
             "username": "your_username",
             "password": "your_password",
-            "sites": ["wong", "elysiver"],  // 可选，默认所有站点
-            "browse_linuxdo": true,          // 可选，是否浏览帖子
-            "browse_count": 10               // 可选，浏览帖子数量
+            "name": "主账号",                               // 可选，显示名称
+            "browse_minutes": 30,                           // 可选，浏览时长（分钟）
+            "checkin_sites": ["kfcapi", "duckcoding"],      // 可选，指定签到站点（不设置=签到全部）
+            "sites": ["wong", "elysiver"]                   // 可选，默认所有站点
         }
         """
         accounts = []

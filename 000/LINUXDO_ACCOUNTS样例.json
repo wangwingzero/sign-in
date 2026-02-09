@@ -1,0 +1,15 @@
+[
+  {
+    "username": "your_linuxdo_email@example.com",
+    "password": "your_linuxdo_password",
+    "name": "主账号",
+    "browse_minutes": 30,
+    "checkin_sites": ["kfcapi", "duckcoding", "runanytime", "hotaru"]
+  },
+  {
+    "username": "second_account@example.com",
+    "password": "second_password",
+    "name": "小号",
+    "browse_minutes": 60
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "name": "KFC主号",
+    "provider": "kfcapi",
+    "cookies": { "session": "your_session_cookie_here" },
+    "api_user": "12345"
+  },
+  {
+    "name": "DuckCoding主号",
+    "provider": "duckcoding",
+    "cookies": { "session": "your_session_cookie_here" },
+    "api_user": "67890"
+  },
+  {
+    "name": "Hotaru主号",
+    "provider": "hotaru",
+    "cookies": { "session": "your_session_cookie_here" },
+    "api_user": "11111"
+  }
+]
