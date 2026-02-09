@@ -2509,33 +2509,40 @@ class PlatformManager:
                     provider.api_user_key: headers.get(provider.api_user_key, ""),
                 }
 
-                # 1. 获取用户信息
-                user_info_path = provider.user_info_path
-                try:
-                    resp = await page.evaluate(f"""
-                        async () => {{
-                            const r = await fetch('{user_info_path}', {{
-                                headers: {json.dumps(fetch_headers)}
-                            }});
-                            return {{ status: r.status, text: await r.text() }};
-                        }}
-                    """)
-                    if resp["status"] == 200:
-                        try:
-                            data = json.loads(resp["text"])
-                            if data.get("success"):
-                                user_data = data.get("data", {})
-                                quota = round(user_data.get("quota", 0) / 500000, 2)
-                                used_quota = round(user_data.get("used_quota", 0) / 500000, 2)
-                                details["balance"] = f"${quota}"
-                                details["used"] = f"${used_quota}"
-                                logger.info(f"[{account_name}] 余额: ${quota}, 已用: ${used_quota}")
-                        except json.JSONDecodeError:
-                            pass
-                    else:
-                        logger.warning(f"[{account_name}] 获取用户信息失败: HTTP {resp['status']}")
-                except Exception as e:
-                    logger.warning(f"[{account_name}] 获取用户信息失败: {e}")
+                # ---- 辅助：浏览器内 GET 用户信息 ----
+                async def _fetch_user_info_in_browser():
+                    """在浏览器内获取用户信息，返回 (quota, used_quota) 或 None"""
+                    try:
+                        r = await page.evaluate(f"""
+                            async () => {{
+                                const r = await fetch('{provider.user_info_path}', {{
+                                    headers: {json.dumps(fetch_headers)}
+                                }});
+                                return {{ status: r.status, text: await r.text() }};
+                            }}
+                        """)
+                        if r["status"] == 200:
+                            d = json.loads(r["text"])
+                            if d.get("success"):
+                                ud = d.get("data", {})
+                                return (
+                                    round(ud.get("quota", 0) / 500000, 2),
+                                    round(ud.get("used_quota", 0) / 500000, 2),
+                                )
+                        else:
+                            logger.warning(f"[{account_name}] 获取用户信息失败: HTTP {r['status']}")
+                    except Exception as e:
+                        logger.warning(f"[{account_name}] 获取用户信息失败: {e}")
+                    return None
+
+                # 1. 获取签到前余额
+                pre_info = await _fetch_user_info_in_browser()
+                pre_quota: float | None = None
+                if pre_info:
+                    pre_quota, used_quota = pre_info
+                    details["balance"] = f"${pre_quota}"
+                    details["used"] = f"${used_quota}"
+                    logger.info(f"[{account_name}] 签到前余额: ${pre_quota}, 已用: ${used_quota}")
 
                 # 2. 执行签到（如果需要）
                 if provider.needs_manual_check_in():
@@ -2552,7 +2559,7 @@ class PlatformManager:
                                 return {{ status: r.status, text: await r.text() }};
                             }}
                         """)
-                        logger.debug(f"[{account_name}] 签到响应: {resp['status']}")
+                        logger.debug(f"[{account_name}] 签到响应: status={resp['status']}, body={resp['text'][:200]}")
 
                         if resp["status"] == 200:
                             try:
@@ -2560,6 +2567,28 @@ class PlatformManager:
                                 msg = result.get("message") or result.get("msg") or ""
                                 if result.get("success") or result.get("ret") == 1 or result.get("code") == 0:
                                     msg = msg or "签到成功"
+
+                                    # 3. 签到后验证：二次查询余额确认签到真实性
+                                    post_info = await _fetch_user_info_in_browser()
+                                    if post_info and pre_quota is not None:
+                                        post_quota, post_used = post_info
+                                        delta = round(post_quota - pre_quota, 2)
+                                        details["balance"] = f"${post_quota}"
+                                        details["used"] = f"${post_used}"
+                                        if delta > 0:
+                                            details["checkin_reward"] = f"+${delta}"
+                                            logger.success(f"[{account_name}] ✅ 签到验证通过: 余额 ${pre_quota} → ${post_quota} (奖励 +${delta})")
+                                        elif delta == 0:
+                                            logger.warning(f"[{account_name}] ⚠️ 签到API返回成功但余额未变: ${pre_quota} → ${post_quota}")
+                                            details["checkin_verify"] = "余额未变(可能已签到过)"
+                                        else:
+                                            logger.warning(f"[{account_name}] ⚠️ 签到后余额反而减少: ${pre_quota} → ${post_quota}")
+                                    elif post_info:
+                                        post_quota, post_used = post_info
+                                        details["balance"] = f"${post_quota}"
+                                        details["used"] = f"${post_used}"
+                                        logger.info(f"[{account_name}] 签到后余额: ${post_quota}")
+
                                     logger.success(f"[{account_name}] {msg}")
                                     return CheckinResult(
                                         platform=f"NewAPI ({provider.name})",
@@ -2597,7 +2626,7 @@ class PlatformManager:
                                         details=details if details else None,
                                     )
 
-                        logger.error(f"[{account_name}] 签到失败: HTTP {resp['status']}")
+                        logger.error(f"[{account_name}] 签到失败: HTTP {resp['status']}, body={resp['text'][:200]}")
                         return CheckinResult(
                             platform=f"NewAPI ({provider.name})",
                             account=account_name,
