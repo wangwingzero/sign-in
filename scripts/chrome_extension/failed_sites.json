@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-02-09T13:30:25.468310+00:00",
+  "generated_at": "2026-02-10T02:58:54.909178+00:00",
   "source": "github_actions",
   "failed_count": 8,
   "failed_sites": [
@@ -49,13 +49,13 @@
       "oauth_cookie_blocked": true
     },
     {
-      "provider": "wong",
-      "account_name": "小号_wong",
+      "provider": "muyuan",
+      "account_name": "小号_muyuan",
       "api_user": "",
-      "platform": "NewAPI (wong)",
-      "site_url": "https://wzw.pp.ua",
-      "login_url": "https://wzw.pp.ua/login",
-      "oauth_login_url": "https://wzw.pp.ua/auth/login?returnTo=%2F",
+      "platform": "NewAPI (muyuan)",
+      "site_url": "https://newapi.linuxdo.edu.rs",
+      "login_url": "https://newapi.linuxdo.edu.rs/login",
+      "oauth_login_url": "https://newapi.linuxdo.edu.rs/auth/login?returnTo=%2F",
       "reason": "OAuth 登录失败，无法获取 session",
       "failure_kind": "session_missing",
       "runtime_cookie_keys": [],
@@ -64,13 +64,13 @@
       "oauth_cookie_blocked": true
     },
     {
-      "provider": "muyuan",
-      "account_name": "小号_muyuan",
+      "provider": "wong",
+      "account_name": "小号_wong",
       "api_user": "",
-      "platform": "NewAPI (muyuan)",
-      "site_url": "https://newapi.linuxdo.edu.rs",
-      "login_url": "https://newapi.linuxdo.edu.rs/login",
-      "oauth_login_url": "https://newapi.linuxdo.edu.rs/auth/login?returnTo=%2F",
+      "platform": "NewAPI (wong)",
+      "site_url": "https://wzw.pp.ua",
+      "login_url": "https://wzw.pp.ua/login",
+      "oauth_login_url": "https://wzw.pp.ua/auth/login?returnTo=%2F",
       "reason": "OAuth 登录失败，无法获取 session",
       "failure_kind": "session_missing",
       "runtime_cookie_keys": [],
