@@ -1361,14 +1361,19 @@ class PlatformManager:
 
         仅自动模式：
         - 必须配置 LINUXDO_ACCOUNTS
-        - NEWAPI_ACCOUNTS 仅作为 seed cookie 补充来源，不再作为独立执行模式
+        - NEWAPI_ACCOUNTS 默认作为 seed cookie 补充来源
+        - 未映射到 LinuxDO 的 anyrouter 账号会额外独立执行
         """
         if not self._linuxdo_accounts:
-            logger.warning("未配置 LINUXDO_ACCOUNTS，自动模式无法执行")
-            return []
+            if not self.config.anyrouter_accounts:
+                logger.warning("未配置 LINUXDO_ACCOUNTS，自动模式无法执行")
+                return []
+            logger.warning("未配置 LINUXDO_ACCOUNTS，将仅执行独立 anyrouter 账号")
+            return await self._run_unmapped_anyrouter_accounts()
         logger.info("使用仅自动模式：以 LINUXDO_ACCOUNTS 遍历站点，NEWAPI_ACCOUNTS 仅作为 seed cookie")
 
         all_results: list[CheckinResult] = []
+        used_seed_identities: set[tuple[str, str]] = set()
         total_accounts = len(self._linuxdo_accounts)
 
         for idx, linuxdo_account in enumerate(self._linuxdo_accounts):
@@ -1382,6 +1387,7 @@ class PlatformManager:
                     linuxdo_account=linuxdo_account,
                     account_index=idx,
                     account_total=total_accounts,
+                    used_seed_identities=used_seed_identities,
                 )
                 all_results.extend(account_results)
             except Exception as e:
@@ -1392,6 +1398,9 @@ class PlatformManager:
                     status=CheckinStatus.FAILED,
                     message=f"自动模式运行异常: {str(e)}",
                 ))
+
+        standalone_anyrouter_results = await self._run_unmapped_anyrouter_accounts(used_seed_identities)
+        all_results.extend(standalone_anyrouter_results)
 
         return all_results
 
@@ -1444,11 +1453,89 @@ class PlatformManager:
         # 兜底：第一个
         return seeds[0]
 
+    @staticmethod
+    def _build_seed_identity(account: AnyRouterAccount) -> tuple[str, str] | None:
+        """构建 seed 账号标识（provider + api_user），用于跨流程去重。"""
+        provider = (account.provider or "").strip().lower()
+        api_user = str(account.api_user or "").strip()
+        if not provider or not api_user:
+            return None
+        return (provider, api_user)
+
+    def _get_provider_with_default(self, provider_name: str) -> ProviderConfig | None:
+        """读取 provider 配置，不存在时回退 DEFAULT_PROVIDERS。"""
+        provider = self.config.providers.get(provider_name)
+        if provider:
+            return provider
+
+        if provider_name in DEFAULT_PROVIDERS:
+            try:
+                return ProviderConfig.from_dict(provider_name, DEFAULT_PROVIDERS[provider_name])
+            except Exception as e:
+                logger.warning(f"加载默认 provider '{provider_name}' 失败: {e}")
+        return None
+
+    async def _run_unmapped_anyrouter_accounts(
+        self,
+        used_seed_identities: set[tuple[str, str]] | None = None,
+    ) -> list[CheckinResult]:
+        """执行未被 LinuxDO 映射到的 anyrouter 账号。"""
+        if not self.config.anyrouter_accounts:
+            return []
+
+        provider_name = "anyrouter"
+        provider = self._get_provider_with_default(provider_name)
+        if not provider:
+            logger.warning("独立 anyrouter 账号执行失败：未找到 anyrouter provider 配置")
+            return []
+
+        used = used_seed_identities or set()
+        handled_identities: set[tuple[str, str]] = set()
+        results: list[CheckinResult] = []
+
+        for idx, account in enumerate(self.config.anyrouter_accounts):
+            if (account.provider or "").strip().lower() != provider_name:
+                continue
+
+            identity = self._build_seed_identity(account)
+            if not identity or identity in used or identity in handled_identities:
+                continue
+
+            session = self._extract_session_cookie(account.cookies)
+            if not session:
+                continue
+
+            handled_identities.add(identity)
+            account_name = account.get_display_name(idx)
+            logger.info(f"[{account_name}] 作为独立 anyrouter 账号执行（未关联 LinuxDO）")
+
+            result = await self._checkin_newapi(account, provider, account_name)
+            if result.status == CheckinStatus.SUCCESS:
+                result.message = f"{result.message} (NEWAPI_ACCOUNTS 独立账号)"
+                if result.details is None:
+                    result.details = {}
+                result.details["login_method"] = "newapi_accounts_standalone"
+
+                cookies = account.cookies if isinstance(account.cookies, dict) else {"session": session}
+                self._cookie_cache.save(
+                    provider_name,
+                    account_name,
+                    session,
+                    str(account.api_user or ""),
+                    cookies=cookies,
+                )
+            results.append(result)
+
+        if handled_identities:
+            logger.info(f"独立 anyrouter 账号执行完成: {len(handled_identities)} 个账号")
+        return results
+
     async def _run_newapi_auto_oauth(
         self,
         linuxdo_account: dict | None = None,
         account_index: int = 0,
         account_total: int = 1,
+        used_seed_identities: set[tuple[str, str]] | None = None,
     ) -> list[CheckinResult]:
         """自动模式：用单个 LinuxDO 账号遍历所有 NewAPI 站点，自动 OAuth 登录签到
 
@@ -1699,6 +1786,10 @@ class PlatformManager:
             # 支持多账号：按 LinuxDO 账号名匹配对应的 seed（同 provider 可能有多个不同用户）
             seed_list = seed_accounts.get(provider_name)
             seed_account = self._match_seed_for_linuxdo(seed_list, linuxdo_name, account_index) if seed_list else None
+            if seed_account and used_seed_identities is not None:
+                seed_identity = self._build_seed_identity(seed_account)
+                if seed_identity:
+                    used_seed_identities.add(seed_identity)
             if seed_account:
                 logger.info(f"[{account_name}] 发现 NEWAPI_ACCOUNTS seed（api_user={seed_account.api_user}），优先尝试")
                 try:
