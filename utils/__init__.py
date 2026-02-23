@@ -65,6 +65,11 @@ from .browser import (
     BrowserStartupError,
 )
 
+# Import failure tracker module
+from .failure_tracker import (
+    FailureTracker,
+)
+
 __all__ = [
     # Config
     "AppConfig",
@@ -111,4 +116,6 @@ __all__ = [
     "DEFAULT_DEBUG_DIR",
     # Browser - Exception classes
     "BrowserStartupError",
+    # Failure tracker
+    "FailureTracker",
 ]

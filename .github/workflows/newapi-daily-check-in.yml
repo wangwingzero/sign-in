@@ -60,6 +60,7 @@ jobs:
           path: |
             .newapi_cookies
             .newapi_accounts_override.json
+            .newapi_failure_tracker.json
           key: newapi-cookies-${{ github.run_id }}
           restore-keys: |
             newapi-cookies-
@@ -77,6 +78,9 @@ jobs:
           
           # 站点过滤（手动触发时可指定仅签到某些站点，加速调试）
           CHECKIN_SITES_OVERRIDE: ${{ github.event.inputs.checkin_sites || '' }}
+
+          # 连续失败跳过阈值（连续失败 N 次后自动跳过该站点，默认 3）
+          FAILURE_THRESHOLD: ${{ secrets.FAILURE_THRESHOLD || '3' }}
 
           # Debug 模式（设置为 true 开启截图和详细日志）
           # DEBUG: "true"

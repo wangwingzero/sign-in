@@ -26,13 +26,14 @@ from platforms.base import CheckinResult, CheckinStatus
 from platforms.linuxdo import LinuxDOAdapter
 from utils.config import DEFAULT_PROVIDERS, AnyRouterAccount, AppConfig, ProviderConfig
 from utils.cookie_cache import CookieCache
+from utils.failure_tracker import FailureTracker
 from utils.notify import NotificationManager
 
 
 def _create_ssl_context() -> ssl.SSLContext:
     """创建兼容旧服务器的 SSL 上下文"""
     ctx = ssl.create_default_context()
-    ctx.set_ciphers('DEFAULT@SECLEVEL=1')
+    ctx.set_ciphers("DEFAULT@SECLEVEL=1")
     ctx.options |= 0x4  # ssl.OP_LEGACY_SERVER_CONNECT
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
@@ -48,10 +49,11 @@ class PlatformManager:
         self.results: list[CheckinResult] = []
         # Cookie 缓存：OAuth 成功后自动保存，下次优先使用 Cookie+API（更快）
         self._cookie_cache = CookieCache()
+        # 连续失败跟踪：达到阈值后自动跳过站点，节省 CI 时间
+        self._failure_tracker = FailureTracker()
+        self._failure_threshold = int(os.environ.get("FAILURE_THRESHOLD", "3"))
         # NEWAPI_ACCOUNTS 覆盖文件：Secrets 只读时，用文件缓存“最新可用 cookie”覆盖旧配置
-        self._newapi_override_file = os.getenv(
-            "NEWAPI_ACCOUNTS_OVERRIDE_FILE", ".newapi_accounts_override.json"
-        )
+        self._newapi_override_file = os.getenv("NEWAPI_ACCOUNTS_OVERRIDE_FILE", ".newapi_accounts_override.json")
         self._newapi_failed_sites_file = os.getenv(
             "NEWAPI_FAILED_SITES_FILE", "scripts/chrome_extension/failed_sites.json"
         )
@@ -82,9 +84,7 @@ class PlatformManager:
         try:
             target_dir = os.path.dirname(self._newapi_override_file) or "."
             os.makedirs(target_dir, exist_ok=True)
-            with tempfile.NamedTemporaryFile(
-                mode="w", delete=False, dir=target_dir, encoding="utf-8"
-            ) as tmp:
+            with tempfile.NamedTemporaryFile(mode="w", delete=False, dir=target_dir, encoding="utf-8") as tmp:
                 json.dump(payload, tmp, ensure_ascii=False, indent=2)
                 tmp_path = tmp.name
             os.replace(tmp_path, self._newapi_override_file)
@@ -137,9 +137,7 @@ class PlatformManager:
 
             source = hit.get("source", "override")
             updated_at = hit.get("updated_at", "")
-            logger.info(
-                f"[{account_name}] 应用账号覆盖Cookie（source={source}, updated_at={updated_at}）"
-            )
+            logger.info(f"[{account_name}] 应用账号覆盖Cookie（source={source}, updated_at={updated_at}）")
 
         if applied:
             logger.success(f"已应用 {applied} 个 NEWAPI 账号覆盖Cookie")
@@ -202,11 +200,7 @@ class PlatformManager:
 
         cookie_bundle: dict[str, str] = {}
         if isinstance(cookies, dict):
-            cookie_bundle = {
-                str(k): str(v)
-                for k, v in cookies.items()
-                if k and v is not None and str(v).strip()
-            }
+            cookie_bundle = {str(k): str(v) for k, v in cookies.items() if k and v is not None and str(v).strip()}
         if "session" not in cookie_bundle:
             cookie_bundle["session"] = session_cookie
 
@@ -234,13 +228,15 @@ class PlatformManager:
         # 从配置中获取 LinuxDO 账户，仅用于 OAuth 登录
         if self.config.linuxdo_accounts:
             for acc in self.config.linuxdo_accounts:
-                self._linuxdo_accounts.append({
-                    "username": acc.username,
-                    "password": acc.password,
-                    "name": acc.name,
-                    "checkin_sites": acc.checkin_sites,  # 空=全部站点，非空=仅指定站点（白名单）
-                    "exclude_sites": acc.exclude_sites,  # 空=不排除，非空=跳过指定站点（黑名单）
-                })
+                self._linuxdo_accounts.append(
+                    {
+                        "username": acc.username,
+                        "password": acc.password,
+                        "name": acc.name,
+                        "checkin_sites": acc.checkin_sites,  # 空=全部站点，非空=仅指定站点（白名单）
+                        "exclude_sites": acc.exclude_sites,  # 空=不排除，非空=跳过指定站点（黑名单）
+                    }
+                )
         if self._linuxdo_accounts:
             logger.info(f"已加载 {len(self._linuxdo_accounts)} 个 LinuxDO 账户用于浏览器回退登录")
 
@@ -304,8 +300,7 @@ class PlatformManager:
         source_providers = self.config.providers
         if not source_providers:
             source_providers = {
-                name: ProviderConfig.from_dict(name, config_data)
-                for name, config_data in DEFAULT_PROVIDERS.items()
+                name: ProviderConfig.from_dict(name, config_data) for name, config_data in DEFAULT_PROVIDERS.items()
             }
 
         for name, provider in source_providers.items():
@@ -328,9 +323,7 @@ class PlatformManager:
 
         return providers_to_test
 
-    def _export_available_sites_list(
-        self, providers: dict[str, "ProviderConfig"], ldoh_status: str
-    ) -> None:
+    def _export_available_sites_list(self, providers: dict[str, "ProviderConfig"], ldoh_status: str) -> None:
         """导出可用站点列表到 000/可用站点列表.md（自动更新部分）。
 
         在每次签到运行后自动更新，方便用户查看当前可用的站点 ID 和 URL，
@@ -372,13 +365,7 @@ class PlatformManager:
                 logger.debug("000/可用站点列表.md 中未找到 AUTO_SITES 标记，跳过导出")
                 return
 
-            new_content = (
-                content[:start_idx + len(start_marker)]
-                + "\n"
-                + auto_content
-                + "\n"
-                + content[end_idx:]
-            )
+            new_content = content[: start_idx + len(start_marker)] + "\n" + auto_content + "\n" + content[end_idx:]
 
             with open(sites_file, "w", encoding="utf-8") as f:
                 f.write(new_content)
@@ -391,9 +378,7 @@ class PlatformManager:
         """自动 OAuth 固定使用 nodriver + 非 headless，避免环境变量误配。"""
         current_engine = (os.environ.get("BROWSER_ENGINE") or "").lower()
         if current_engine != "nodriver":
-            logger.warning(
-                f"自动 OAuth 强制使用 nodriver（当前 BROWSER_ENGINE={current_engine or '未设置'}）"
-            )
+            logger.warning(f"自动 OAuth 强制使用 nodriver（当前 BROWSER_ENGINE={current_engine or '未设置'}）")
         if (os.environ.get("BROWSER_HEADLESS") or "").lower() == "true":
             logger.warning("自动 OAuth 强制使用有头模式（忽略 BROWSER_HEADLESS=true）")
 
@@ -517,9 +502,7 @@ class PlatformManager:
             for idx, item in enumerate(node[:30]):
                 if not isinstance(item, (dict, list)):
                     continue
-                sites, hit_path = cls._extract_ldoh_sites_from_json(
-                    item, f"{path}[{idx}]", depth + 1, max_depth
-                )
+                sites, hit_path = cls._extract_ldoh_sites_from_json(item, f"{path}[{idx}]", depth + 1, max_depth)
                 if sites is not None:
                     return sites, hit_path
             return None, None
@@ -536,9 +519,7 @@ class PlatformManager:
                 value = node.get(key)
                 next_path = f"{path}.{key}"
                 if isinstance(value, (dict, list)):
-                    sites, hit_path = cls._extract_ldoh_sites_from_json(
-                        value, next_path, depth + 1, max_depth
-                    )
+                    sites, hit_path = cls._extract_ldoh_sites_from_json(value, next_path, depth + 1, max_depth)
                     if sites is not None:
                         return sites, hit_path
                 elif isinstance(value, str):
@@ -688,9 +669,7 @@ class PlatformManager:
             if sites is None:
                 if isinstance(payload, dict):
                     keys_preview = ",".join(list(payload.keys())[:8])
-                    logger.warning(
-                        f"LDOH: /api/sites JSON 未识别到站点数组，顶层keys={keys_preview}"
-                    )
+                    logger.warning(f"LDOH: /api/sites JSON 未识别到站点数组，顶层keys={keys_preview}")
                 else:
                     logger.warning(f"LDOH: /api/sites 返回不支持的 JSON 类型: {type(payload).__name__}")
                 return None
@@ -831,9 +810,7 @@ class PlatformManager:
             try:
                 payload = json.loads(payload_text)
             except json.JSONDecodeError:
-                logger.warning(
-                    f"LDOH 站点同步返回非 JSON，前200字符: {payload_text[:200]!r}"
-                )
+                logger.warning(f"LDOH 站点同步返回非 JSON，前200字符: {payload_text[:200]!r}")
                 payload = await self._fetch_ldoh_sites_payload_by_navigation(tab, ldoh_base_url)
                 if payload is None:
                     return None
@@ -855,8 +832,7 @@ class PlatformManager:
                 return None
 
             local_by_domain = {
-                self._normalize_domain(provider.domain): (name, provider)
-                for name, provider in local_providers.items()
+                self._normalize_domain(provider.domain): (name, provider) for name, provider in local_providers.items()
             }
 
             dynamic_providers: dict[str, ProviderConfig] = {}
@@ -915,7 +891,10 @@ class PlatformManager:
             return None
 
     async def _probe_provider_availability(
-        self, client: httpx.AsyncClient, provider_name: str, provider: ProviderConfig,
+        self,
+        client: httpx.AsyncClient,
+        provider_name: str,
+        provider: ProviderConfig,
     ) -> tuple[bool, str]:
         """探测站点可用性：仅保留可访问站点，避免无效站点进入签到流程。"""
         status_ok = {200, 201, 202, 204, 301, 302, 307, 308, 400, 401, 403, 405, 429}
@@ -938,9 +917,7 @@ class PlatformManager:
         logger.debug(f"[{provider_name}] 可用性探测失败: {last_reason}")
         return False, last_reason
 
-    async def _filter_available_providers(
-        self, providers: dict[str, ProviderConfig]
-    ) -> dict[str, ProviderConfig]:
+    async def _filter_available_providers(self, providers: dict[str, ProviderConfig]) -> dict[str, ProviderConfig]:
         """过滤掉不可用站点，仅返回当前可用站点。"""
         if not providers:
             return providers
@@ -961,14 +938,14 @@ class PlatformManager:
         semaphore = asyncio.Semaphore(probe_concurrency)
 
         logger.info(
-            "站点可用性探测参数: "
-            f"connect={connect_timeout}s, read={read_timeout}s, concurrency={probe_concurrency}"
+            f"站点可用性探测参数: connect={connect_timeout}s, read={read_timeout}s, concurrency={probe_concurrency}"
         )
 
         available: dict[str, ProviderConfig] = {}
         unavailable: list[tuple[str, str]] = []
 
         async with httpx.AsyncClient(verify=False, timeout=timeout, limits=limits) as client:
+
             async def check_one(name: str, provider: ProviderConfig) -> None:
                 async with semaphore:
                     ok, reason = await self._probe_provider_availability(client, name, provider)
@@ -978,10 +955,7 @@ class PlatformManager:
                     else:
                         unavailable.append((name, reason))
 
-            await asyncio.gather(*[
-                check_one(name, provider)
-                for name, provider in providers.items()
-            ])
+            await asyncio.gather(*[check_one(name, provider) for name, provider in providers.items()])
 
         if unavailable:
             preview = ", ".join(f"{name}({reason})" for name, reason in unavailable[:8])
@@ -994,9 +968,7 @@ class PlatformManager:
 
         return available
 
-    def _log_auto_oauth_summary(
-        self, stats: dict[str, int | str], results: list[CheckinResult]
-    ) -> None:
+    def _log_auto_oauth_summary(self, stats: dict[str, int | str], results: list[CheckinResult]) -> None:
         """输出自动 OAuth 结构化摘要，便于 CI 抽取。"""
         success_count = sum(1 for r in results if r.status == CheckinStatus.SUCCESS)
         failed_count = sum(1 for r in results if r.status == CheckinStatus.FAILED)
@@ -1016,7 +988,7 @@ class PlatformManager:
         prefix = "NewAPI ("
         if not platform_name.startswith(prefix) or not platform_name.endswith(")"):
             return None
-        return platform_name[len(prefix):-1].strip() or None
+        return platform_name[len(prefix) : -1].strip() or None
 
     def export_newapi_failed_sites_for_extension(self, output_path: str | None = None) -> str:
         """导出 NewAPI 失败站点报告给 Chrome 插件读取。"""
@@ -1024,9 +996,7 @@ class PlatformManager:
         failed_results = [
             r
             for r in self.results
-            if r.status == CheckinStatus.FAILED
-            and isinstance(r.platform, str)
-            and r.platform.startswith("NewAPI (")
+            if r.status == CheckinStatus.FAILED and isinstance(r.platform, str) and r.platform.startswith("NewAPI (")
         ]
 
         account_lookup: dict[tuple[str, str], AnyRouterAccount] = {}
@@ -1270,9 +1240,7 @@ class PlatformManager:
         )
         content_lines = ["本次 NewAPI 运行已生成附件文件："]
         if export_path and export_path in attachments:
-            content_lines.append(
-                f"- {os.path.basename(export_path)}：运行后账号快照，可按需更新到仓库 Secret。"
-            )
+            content_lines.append(f"- {os.path.basename(export_path)}：运行后账号快照，可按需更新到仓库 Secret。")
         if failed_sites_path and failed_sites_path in attachments:
             content_lines.append(
                 f"- {os.path.basename(failed_sites_path)}：失败站点清单，可在插件中导入后一键打开站点进行人工登录补录。"
@@ -1332,7 +1300,7 @@ class PlatformManager:
 
             # 从 level 计算浏览数量：L1=多看(10个), L2=一般(7个), L3=快速(5个)
             # 但如果用户指定了 browse_count，优先使用用户的设置
-            level = getattr(account, 'level', 2) if hasattr(account, 'level') else 2
+            level = getattr(account, "level", 2) if hasattr(account, "level") else 2
 
             adapter = LinuxDOAdapter(
                 username=account.username,
@@ -1347,12 +1315,14 @@ class PlatformManager:
                 results.append(result)
             except Exception as e:
                 logger.error(f"LinuxDO 浏览异常: {e}")
-                results.append(CheckinResult(
-                    platform="LinuxDO",
-                    account=account.get_display_name(i),
-                    status=CheckinStatus.FAILED,
-                    message=f"浏览异常: {str(e)}",
-                ))
+                results.append(
+                    CheckinResult(
+                        platform="LinuxDO",
+                        account=account.get_display_name(i),
+                        status=CheckinStatus.FAILED,
+                        message=f"浏览异常: {str(e)}",
+                    )
+                )
 
         return results
 
@@ -1379,9 +1349,7 @@ class PlatformManager:
         for idx, linuxdo_account in enumerate(self._linuxdo_accounts):
             linuxdo_username = linuxdo_account.get("username", "")
             linuxdo_name = linuxdo_account.get("name", linuxdo_username or f"LinuxDO账号{idx + 1}")
-            logger.info(
-                f"自动模式: 开始处理 LinuxDO 账号 [{idx + 1}/{total_accounts}] [{linuxdo_name}]"
-            )
+            logger.info(f"自动模式: 开始处理 LinuxDO 账号 [{idx + 1}/{total_accounts}] [{linuxdo_name}]")
             try:
                 account_results = await self._run_newapi_auto_oauth(
                     linuxdo_account=linuxdo_account,
@@ -1392,12 +1360,14 @@ class PlatformManager:
                 all_results.extend(account_results)
             except Exception as e:
                 logger.exception(f"[{linuxdo_name}] 自动模式运行异常: {e}")
-                all_results.append(CheckinResult(
-                    platform="NewAPI",
-                    account=linuxdo_name,
-                    status=CheckinStatus.FAILED,
-                    message=f"自动模式运行异常: {str(e)}",
-                ))
+                all_results.append(
+                    CheckinResult(
+                        platform="NewAPI",
+                        account=linuxdo_name,
+                        status=CheckinStatus.FAILED,
+                        message=f"自动模式运行异常: {str(e)}",
+                    )
+                )
 
         standalone_anyrouter_results = await self._run_unmapped_anyrouter_accounts(used_seed_identities)
         all_results.extend(standalone_anyrouter_results)
@@ -1427,7 +1397,9 @@ class PlatformManager:
 
     @staticmethod
     def _match_seed_for_linuxdo(
-        seeds: list[AnyRouterAccount], linuxdo_name: str, account_index: int = 0,
+        seeds: list[AnyRouterAccount],
+        linuxdo_name: str,
+        account_index: int = 0,
     ) -> AnyRouterAccount | None:
         """从多个 seed 中匹配当前 LinuxDO 账号的 seed。
 
@@ -1555,6 +1527,7 @@ class PlatformManager:
             "candidate_total": 0,
             "candidate_after_probe": 0,
             "candidate_skipped_by_probe": 0,
+            "candidate_skipped_by_failure": 0,
             "cookie_hit": 0,
             "cookie_success": 0,
             "cookie_invalidated": 0,
@@ -1578,11 +1551,7 @@ class PlatformManager:
         if env_checkin_override:
             checkin_sites = [s.strip() for s in env_checkin_override.split(",") if s.strip()]
             logger.info(f"[{linuxdo_name}] CHECKIN_SITES_OVERRIDE 覆盖: {checkin_sites}")
-        account_progress = (
-            f"{account_index + 1}/{account_total}"
-            if account_total > 0
-            else "1/1"
-        )
+        account_progress = f"{account_index + 1}/{account_total}" if account_total > 0 else "1/1"
 
         logger.info(f"自动模式[{account_progress}]: 使用 LinuxDO 账号 [{linuxdo_name}] 遍历站点")
         seed_accounts = self._build_seed_accounts_by_provider()
@@ -1651,9 +1620,7 @@ class PlatformManager:
                 anyrouter_provider = self.config.providers.get("anyrouter")
                 if not anyrouter_provider and "anyrouter" in DEFAULT_PROVIDERS:
                     try:
-                        anyrouter_provider = ProviderConfig.from_dict(
-                            "anyrouter", DEFAULT_PROVIDERS["anyrouter"]
-                        )
+                        anyrouter_provider = ProviderConfig.from_dict("anyrouter", DEFAULT_PROVIDERS["anyrouter"])
                     except Exception:
                         anyrouter_provider = None
                 if anyrouter_provider:
@@ -1711,17 +1678,13 @@ class PlatformManager:
                     if spec in prov_lower or spec in (prov.name or "").lower():
                         filtered[prov_name] = prov
                         matched_specs.add(spec)
-                        logger.debug(
-                            f"[{linuxdo_name}] checkin_sites 模糊匹配: '{spec}' → '{prov_name}'"
-                        )
+                        logger.debug(f"[{linuxdo_name}] checkin_sites 模糊匹配: '{spec}' → '{prov_name}'")
                         break
 
             providers_to_test = filtered
             unmatched = checkin_set - matched_specs
             if unmatched:
-                logger.warning(
-                    f"[{linuxdo_name}] checkin_sites 中以下站点未匹配到任何可用站点: {sorted(unmatched)}"
-                )
+                logger.warning(f"[{linuxdo_name}] checkin_sites 中以下站点未匹配到任何可用站点: {sorted(unmatched)}")
             logger.info(
                 f"[{linuxdo_name}] checkin_sites 白名单过滤: {before_count} → {len(providers_to_test)} 个站点 "
                 f"(指定: {sorted(checkin_set)}, 匹配: {sorted(matched_specs)})"
@@ -1759,10 +1722,7 @@ class PlatformManager:
                 if should_exclude:
                     excluded_names.add(prov_name)
 
-            providers_to_test = {
-                name: prov for name, prov in providers_to_test.items()
-                if name not in excluded_names
-            }
+            providers_to_test = {name: prov for name, prov in providers_to_test.items() if name not in excluded_names}
             if excluded_names:
                 logger.info(
                     f"[{linuxdo_name}] exclude_sites 黑名单排除: {before_count} → {len(providers_to_test)} 个站点 "
@@ -1776,6 +1736,65 @@ class PlatformManager:
                     pass
                 self._log_auto_oauth_summary(stats, results)
                 return results
+
+        # 连续失败自动跳过：达到阈值的站点记录 SKIPPED 结果
+        # 豁免条件：anyrouter 始终签到、CHECKIN_SITES_OVERRIDE 手动指定、checkin_sites 白名单
+        skip_summary = self._failure_tracker.get_skip_summary(self._failure_threshold)
+        if skip_summary:
+            logger.info(
+                f"[{linuxdo_name}] 连续失败跟踪: {len(skip_summary)} 个站点达到跳过阈值({self._failure_threshold}次)"
+            )
+            for sk, sv in skip_summary.items():
+                logger.debug(
+                    f"  {sk}: 连续失败 {sv['consecutive_failures']} 次, 原因: {sv['last_failure_reason'][:80]}"
+                )
+
+        skipped_by_tracker: list[str] = []
+        providers_after_skip: dict[str, ProviderConfig] = {}
+        for prov_name, prov in providers_to_test.items():
+            account_name_for_skip = f"{linuxdo_name}_{prov_name}"
+            # 豁免条件判断
+            is_anyrouter = "anyrouter" in prov_name.lower()
+            is_override = bool(env_checkin_override)
+            is_whitelisted = bool(checkin_sites)
+            if (
+                not is_anyrouter
+                and not is_override
+                and not is_whitelisted
+                and self._failure_tracker.should_skip(prov_name, account_name_for_skip, self._failure_threshold)
+            ):
+                fail_count = self._failure_tracker.get_failure_count(prov_name, account_name_for_skip)
+                logger.warning(
+                    f"[{account_name_for_skip}] 连续失败 {fail_count} 次(>={self._failure_threshold})，自动跳过"
+                )
+                results.append(
+                    CheckinResult(
+                        platform=f"NewAPI ({prov_name})",
+                        account=account_name_for_skip,
+                        status=CheckinStatus.SKIPPED,
+                        message=f"连续失败 {fail_count} 次，自动跳过（阈值={self._failure_threshold}）",
+                    )
+                )
+                skipped_by_tracker.append(prov_name)
+            else:
+                providers_after_skip[prov_name] = prov
+
+        if skipped_by_tracker:
+            logger.info(
+                f"[{linuxdo_name}] 连续失败跳过: {len(skipped_by_tracker)} 个站点 ({', '.join(skipped_by_tracker)})"
+            )
+            stats["candidate_skipped_by_failure"] = len(skipped_by_tracker)
+            providers_to_test = providers_after_skip
+
+        if not providers_to_test:
+            logger.warning(f"[{linuxdo_name}] 所有站点被连续失败跳过，本轮无可签到站点")
+            self._failure_tracker.save()
+            try:
+                await browser_mgr.close()
+            except Exception:
+                pass
+            self._log_auto_oauth_summary(stats, results)
+            return results
 
         # 统计需要浏览器 OAuth 的站点（无缓存或缓存失效）
         need_oauth = []
@@ -1816,6 +1835,7 @@ class PlatformManager:
                                 cookies=seed_cookies,
                             )
                         logger.success(f"[{account_name}] NEWAPI_ACCOUNTS seed 签到成功")
+                        self._failure_tracker.record_success(provider_name, account_name)
                         continue
 
                     seed_msg = seed_result.message or ""
@@ -1823,6 +1843,7 @@ class PlatformManager:
                         logger.warning(f"[{account_name}] NEWAPI_ACCOUNTS seed 已失效，继续尝试缓存/OAuth")
                     else:
                         logger.warning(f"[{account_name}] NEWAPI_ACCOUNTS seed 失败: {seed_msg}")
+                        self._failure_tracker.record_failure(provider_name, account_name, seed_msg)
                         results.append(seed_result)
                         continue
                 except Exception as e:
@@ -1854,9 +1875,8 @@ class PlatformManager:
                         results.append(result)
                         stats["cookie_success"] = int(stats["cookie_success"]) + 1
                         logger.success(f"[{account_name}] 缓存Cookie签到成功！")
+                        self._failure_tracker.record_success(provider_name, account_name)
                         continue
-
-                    # Cookie 过期，清除缓存，需要 OAuth
                     msg = result.message or ""
                     if "401" in msg or "403" in msg or "过期" in msg:
                         logger.warning(f"[{account_name}] 缓存Cookie已失效，需要重新OAuth")
@@ -1864,6 +1884,7 @@ class PlatformManager:
                         stats["cookie_invalidated"] = int(stats["cookie_invalidated"]) + 1
                     else:
                         logger.warning(f"[{account_name}] 签到失败: {msg}")
+                        self._failure_tracker.record_failure(provider_name, account_name, msg)
                         results.append(result)
                         continue
                 except Exception as e:
@@ -1872,11 +1893,13 @@ class PlatformManager:
                     stats["cookie_invalidated"] = int(stats["cookie_invalidated"]) + 1
 
             # 3. seed/cache 均不可用，标记为需要 OAuth
-            need_oauth.append({
-                "provider": provider,
-                "provider_name": provider_name,
-                "account_name": account_name,
-            })
+            need_oauth.append(
+                {
+                    "provider": provider,
+                    "provider_name": provider_name,
+                    "account_name": account_name,
+                }
+            )
         stats["oauth_needed"] = len(need_oauth)
 
         if not need_oauth:
@@ -1886,6 +1909,7 @@ class PlatformManager:
                 await browser_mgr.close()
             except Exception as e:
                 logger.debug(f"关闭共享浏览器失败（可忽略）: {e}")
+            self._failure_tracker.save()
             self._log_auto_oauth_summary(stats, results)
             return results
 
@@ -1904,13 +1928,18 @@ class PlatformManager:
                 provider_name = item["provider_name"]
                 account_name = item["account_name"]
 
-                logger.info(f"[{idx+1}/{len(need_oauth)}] [{account_name}] OAuth 登录...")
+                logger.info(f"[{idx + 1}/{len(need_oauth)}] [{account_name}] OAuth 登录...")
 
                 try:
                     result = await asyncio.wait_for(
                         self._oauth_single_site_shared(
-                            tab, browser_mgr, provider, provider_name,
-                            account_name, linuxdo_username, linuxdo_password,
+                            tab,
+                            browser_mgr,
+                            provider,
+                            provider_name,
+                            account_name,
+                            linuxdo_username,
+                            linuxdo_password,
                         ),
                         timeout=site_timeout,
                     )
@@ -1918,6 +1947,7 @@ class PlatformManager:
                     if result.status == CheckinStatus.SUCCESS:
                         logger.success(f"[{account_name}] OAuth 签到成功！")
                         stats["oauth_success"] = int(stats["oauth_success"]) + 1
+                        self._failure_tracker.record_success(provider_name, account_name)
                         if result.details:
                             cached_session = result.details.pop("_cached_session", None)
                             cached_api_user = result.details.pop("_cached_api_user", None)
@@ -1940,34 +1970,39 @@ class PlatformManager:
                         if self._is_retryable_network_message(result.message or ""):
                             stats["oauth_network_failed"] = int(stats["oauth_network_failed"]) + 1
                         logger.warning(f"[{account_name}] OAuth 签到失败: {result.message}")
+                        self._failure_tracker.record_failure(provider_name, account_name, result.message or "")
 
                     results.append(result)
 
                 except asyncio.TimeoutError:
                     logger.error(f"[{account_name}] 超时（>{site_timeout}s），跳过")
                     stats["oauth_failed"] = int(stats["oauth_failed"]) + 1
-                    results.append(CheckinResult(
-                        platform=f"NewAPI ({provider_name})",
-                        account=account_name,
-                        status=CheckinStatus.FAILED,
-                        message=f"OAuth 超时（>{site_timeout}s）",
-                    ))
+                    self._failure_tracker.record_failure(provider_name, account_name, f"OAuth 超时（>{site_timeout}s）")
+                    results.append(
+                        CheckinResult(
+                            platform=f"NewAPI ({provider_name})",
+                            account=account_name,
+                            status=CheckinStatus.FAILED,
+                            message=f"OAuth 超时（>{site_timeout}s）",
+                        )
+                    )
                 except Exception as e:
                     logger.error(f"[{account_name}] OAuth 异常: {e}")
                     stats["oauth_failed"] = int(stats["oauth_failed"]) + 1
                     if self._is_retryable_network_error(e):
                         stats["oauth_network_failed"] = int(stats["oauth_network_failed"]) + 1
-                    results.append(CheckinResult(
-                        platform=f"NewAPI ({provider_name})",
-                        account=account_name,
-                        status=CheckinStatus.FAILED,
-                        message=f"OAuth 异常: {str(e)}",
-                    ))
+                    self._failure_tracker.record_failure(provider_name, account_name, f"OAuth 异常: {str(e)}")
+                    results.append(
+                        CheckinResult(
+                            platform=f"NewAPI ({provider_name})",
+                            account=account_name,
+                            status=CheckinStatus.FAILED,
+                            message=f"OAuth 异常: {str(e)}",
+                        )
+                    )
         else:
             logger.warning(f"共享会话不可用，回退为逐站独立浏览器 OAuth（{len(need_oauth)} 个站点）")
-            await self._run_newapi_oauth_fallback(
-                need_oauth, linuxdo_username, linuxdo_password, results, stats
-            )
+            await self._run_newapi_oauth_fallback(need_oauth, linuxdo_username, linuxdo_password, results, stats)
 
         try:
             logger.info("共享会话: 关闭浏览器")
@@ -1975,12 +2010,19 @@ class PlatformManager:
         except Exception as e:
             logger.debug(f"关闭共享浏览器失败（可忽略）: {e}")
 
+        self._failure_tracker.save()
         self._log_auto_oauth_summary(stats, results)
         return results
 
     async def _oauth_single_site_shared(
-        self, tab, browser_mgr, provider, provider_name: str,
-        account_name: str, linuxdo_username: str, linuxdo_password: str,
+        self,
+        tab,
+        browser_mgr,
+        provider,
+        provider_name: str,
+        account_name: str,
+        linuxdo_username: str,
+        linuxdo_password: str,
     ) -> CheckinResult:
         """在共享浏览器会话中对单个站点执行 OAuth 登录+签到"""
         from platforms.newapi_browser import NewAPIBrowserCheckin
@@ -2026,7 +2068,7 @@ class PlatformManager:
 
                 details["login_method"] = "shared_oauth"
                 details["_cached_session"] = session_cookie
-                details["_cached_api_user"] = (api_user or details.get("resolved_api_user") or "")
+                details["_cached_api_user"] = api_user or details.get("resolved_api_user") or ""
                 details["_cached_cookies"] = runtime_cookies or {"session": session_cookie}
 
                 return CheckinResult(
@@ -2039,18 +2081,15 @@ class PlatformManager:
             except Exception as e:
                 retryable = self._is_retryable_network_error(e)
                 if retryable and attempt < retry_count:
-                    delay = backoff_base * (2 ** attempt)
+                    delay = backoff_base * (2**attempt)
                     logger.warning(
-                        f"[{account_name}] 共享OAuth网络异常，{delay:.1f}s 后重试 "
-                        f"({attempt + 1}/{attempt_total}): {e}"
+                        f"[{account_name}] 共享OAuth网络异常，{delay:.1f}s 后重试 ({attempt + 1}/{attempt_total}): {e}"
                     )
                     await asyncio.sleep(delay)
                     continue
 
                 if retryable:
-                    logger.error(
-                        f"[{account_name}] 共享OAuth网络不可达（重试{retry_count}次后失败）: {e}"
-                    )
+                    logger.error(f"[{account_name}] 共享OAuth网络不可达（重试{retry_count}次后失败）: {e}")
                     return CheckinResult(
                         platform=f"NewAPI ({provider_name})",
                         account=account_name,
@@ -2067,8 +2106,12 @@ class PlatformManager:
                 )
 
     async def _run_newapi_oauth_fallback(
-        self, need_oauth: list[dict], linuxdo_username: str, linuxdo_password: str,
-        results: list[CheckinResult], stats: dict[str, int | str] | None = None,
+        self,
+        need_oauth: list[dict],
+        linuxdo_username: str,
+        linuxdo_password: str,
+        results: list[CheckinResult],
+        stats: dict[str, int | str] | None = None,
     ) -> None:
         """回退模式：共享会话失败时，逐站独立启动浏览器"""
         from platforms.newapi_browser import browser_checkin_newapi
@@ -2088,7 +2131,7 @@ class PlatformManager:
             provider_name = item["provider_name"]
             account_name = item["account_name"]
 
-            logger.info(f"[{idx+1}/{len(need_oauth)}] [{account_name}] 独立浏览器 OAuth...")
+            logger.info(f"[{idx + 1}/{len(need_oauth)}] [{account_name}] 独立浏览器 OAuth...")
 
             final_result: CheckinResult | None = None
             for attempt in range(attempt_total):
@@ -2098,7 +2141,8 @@ class PlatformManager:
                             provider_name=provider_name,
                             linuxdo_username=linuxdo_username,
                             linuxdo_password=linuxdo_password,
-                            cookies=None, api_user=None,
+                            cookies=None,
+                            api_user=None,
                             account_name=account_name,
                         ),
                         timeout=site_timeout,
@@ -2109,7 +2153,7 @@ class PlatformManager:
                         and self._is_retryable_network_message(result.message or "")
                         and attempt < retry_count
                     ):
-                        delay = backoff_base * (2 ** attempt)
+                        delay = backoff_base * (2**attempt)
                         logger.warning(
                             f"[{account_name}] 独立OAuth网络失败，{delay:.1f}s 后重试 "
                             f"({attempt + 1}/{attempt_total}): {result.message}"
@@ -2128,9 +2172,7 @@ class PlatformManager:
                                 cached_session,
                                 cached_api_user,
                                 cookies=(
-                                    cached_cookies
-                                    if isinstance(cached_cookies, dict)
-                                    else {"session": cached_session}
+                                    cached_cookies if isinstance(cached_cookies, dict) else {"session": cached_session}
                                 ),
                             )
 
@@ -2139,10 +2181,9 @@ class PlatformManager:
 
                 except asyncio.TimeoutError:
                     if attempt < retry_count:
-                        delay = backoff_base * (2 ** attempt)
+                        delay = backoff_base * (2**attempt)
                         logger.warning(
-                            f"[{account_name}] 独立OAuth超时，{delay:.1f}s 后重试 "
-                            f"({attempt + 1}/{attempt_total})"
+                            f"[{account_name}] 独立OAuth超时，{delay:.1f}s 后重试 ({attempt + 1}/{attempt_total})"
                         )
                         await asyncio.sleep(delay)
                         continue
@@ -2156,7 +2197,7 @@ class PlatformManager:
                 except Exception as e:
                     retryable = self._is_retryable_network_error(e)
                     if retryable and attempt < retry_count:
-                        delay = backoff_base * (2 ** attempt)
+                        delay = backoff_base * (2**attempt)
                         logger.warning(
                             f"[{account_name}] 独立OAuth网络异常，{delay:.1f}s 后重试 "
                             f"({attempt + 1}/{attempt_total}): {e}"
@@ -2167,11 +2208,7 @@ class PlatformManager:
                         platform=f"NewAPI ({provider_name})",
                         account=account_name,
                         status=CheckinStatus.FAILED,
-                        message=(
-                            f"OAuth 网络不可达: {str(e)}"
-                            if retryable
-                            else f"OAuth 异常: {str(e)}"
-                        ),
+                        message=(f"OAuth 网络不可达: {str(e)}" if retryable else f"OAuth 异常: {str(e)}"),
                     )
                     break
 
@@ -2183,6 +2220,10 @@ class PlatformManager:
                     message="OAuth 未知失败",
                 )
             results.append(final_result)
+            if final_result.status == CheckinStatus.SUCCESS:
+                self._failure_tracker.record_success(provider_name, account_name)
+            else:
+                self._failure_tracker.record_failure(provider_name, account_name, final_result.message or "")
             if stats is not None:
                 if final_result.status == CheckinStatus.SUCCESS:
                     stats["oauth_success"] = int(stats.get("oauth_success", 0)) + 1
@@ -2207,15 +2248,18 @@ class PlatformManager:
                 # 尝试从默认配置获取
                 if provider_name in DEFAULT_PROVIDERS:
                     from utils.config import ProviderConfig
+
                     provider = ProviderConfig.from_dict(provider_name, DEFAULT_PROVIDERS[provider_name])
                 else:
                     logger.warning(f"[{account_name}] Provider '{provider_name}' 未找到，跳过")
-                    results.append(CheckinResult(
-                        platform=f"NewAPI ({provider_name})",
-                        account=account_name,
-                        status=CheckinStatus.SKIPPED,
-                        message=f"Provider '{provider_name}' 未配置",
-                    ))
+                    results.append(
+                        CheckinResult(
+                            platform=f"NewAPI ({provider_name})",
+                            account=account_name,
+                            status=CheckinStatus.SKIPPED,
+                            message=f"Provider '{provider_name}' 未配置",
+                        )
+                    )
                     continue
 
             logger.info(f"开始签到: {account_name} ({provider_name})")
@@ -2224,12 +2268,14 @@ class PlatformManager:
             # 检查是否需要直接使用浏览器 OAuth（某些站点有 Cloudflare 保护）
             if provider.bypass_method == "browser_oauth":
                 logger.info(f"[{account_name}] 站点需要浏览器 OAuth 登录")
-                failed_accounts.append({
-                    "account": account,
-                    "provider": provider,
-                    "account_name": account_name,
-                    "original_result": None,
-                })
+                failed_accounts.append(
+                    {
+                        "account": account,
+                        "provider": provider,
+                        "account_name": account_name,
+                        "original_result": None,
+                    }
+                )
                 continue
 
             # ===== 1) GitHub 持久化缓存 Cookie 优先 =====
@@ -2331,23 +2377,27 @@ class PlatformManager:
                             except Exception as e:
                                 logger.warning(f"[{account_name}] 缓存Cookie兜底异常: {e}")
 
-                        failed_accounts.append({
-                            "account": account,
-                            "provider": provider,
-                            "account_name": account_name,
-                            "original_result": result,
-                        })
+                        failed_accounts.append(
+                            {
+                                "account": account,
+                                "provider": provider,
+                                "account_name": account_name,
+                                "original_result": result,
+                            }
+                        )
                         continue  # 先不添加结果，等浏览器回退后再添加
 
                 results.append(result)
             except Exception as e:
                 logger.error(f"[{account_name}] 签到异常: {e}")
-                results.append(CheckinResult(
-                    platform=f"NewAPI ({provider_name})",
-                    account=account_name,
-                    status=CheckinStatus.FAILED,
-                    message=f"签到异常: {str(e)}",
-                ))
+                results.append(
+                    CheckinResult(
+                        platform=f"NewAPI ({provider_name})",
+                        account=account_name,
+                        status=CheckinStatus.FAILED,
+                        message=f"签到异常: {str(e)}",
+                    )
+                )
 
         # 处理需要浏览器回退的账户
         if failed_accounts and self._linuxdo_accounts:
@@ -2363,12 +2413,14 @@ class PlatformManager:
                     results.append(original_result)
                 else:
                     # 对于需要浏览器 OAuth 但没有 LinuxDO 账户的情况
-                    results.append(CheckinResult(
-                        platform=f"NewAPI ({item['provider'].name})",
-                        account=item['account_name'],
-                        status=CheckinStatus.FAILED,
-                        message="需要浏览器 OAuth 登录但未配置 LinuxDO 账户",
-                    ))
+                    results.append(
+                        CheckinResult(
+                            platform=f"NewAPI ({item['provider'].name})",
+                            account=item["account_name"],
+                            status=CheckinStatus.FAILED,
+                            message="需要浏览器 OAuth 登录但未配置 LinuxDO 账户",
+                        )
+                    )
 
         return results
 
@@ -2397,8 +2449,8 @@ class PlatformManager:
                     provider_name=provider.name,
                     linuxdo_username=linuxdo_username,
                     linuxdo_password=linuxdo_password,
-                    cookies=account.cookies if hasattr(account, 'cookies') else None,
-                    api_user=account.api_user if hasattr(account, 'api_user') else None,
+                    cookies=account.cookies if hasattr(account, "cookies") else None,
+                    api_user=account.api_user if hasattr(account, "api_user") else None,
                     account_name=account_name,
                 )
 
@@ -2417,14 +2469,10 @@ class PlatformManager:
                                 cached_session,
                                 cached_api_user,
                                 cookies=(
-                                    cached_cookies
-                                    if isinstance(cached_cookies, dict)
-                                    else {"session": cached_session}
+                                    cached_cookies if isinstance(cached_cookies, dict) else {"session": cached_session}
                                 ),
                             )
-                            logger.success(
-                                f"[{account_name}] 新Cookie已缓存，下次将优先使用Cookie+API方式"
-                            )
+                            logger.success(f"[{account_name}] 新Cookie已缓存，下次将优先使用Cookie+API方式")
                             # 同步覆盖 NEWAPI_ACCOUNTS（通过覆盖文件持久化）
                             self._persist_newapi_account_override(
                                 account=account,
@@ -2433,9 +2481,7 @@ class PlatformManager:
                                 session_cookie=cached_session,
                                 api_user=cached_api_user,
                                 cookies=(
-                                    cached_cookies
-                                    if isinstance(cached_cookies, dict)
-                                    else {"session": cached_session}
+                                    cached_cookies if isinstance(cached_cookies, dict) else {"session": cached_session}
                                 ),
                                 source="oauth_refresh",
                             )
@@ -2452,12 +2498,14 @@ class PlatformManager:
                     original_result.message = f"{original_result.message} (浏览器回退也失败: {e})"
                     results.append(original_result)
                 else:
-                    results.append(CheckinResult(
-                        platform=f"NewAPI ({provider.name})",
-                        account=account_name,
-                        status=CheckinStatus.FAILED,
-                        message=f"浏览器 OAuth 登录失败: {e}",
-                    ))
+                    results.append(
+                        CheckinResult(
+                            platform=f"NewAPI ({provider.name})",
+                            account=account_name,
+                            status=CheckinStatus.FAILED,
+                            message=f"浏览器 OAuth 登录失败: {e}",
+                        )
+                    )
 
         return results
 
@@ -2466,11 +2514,7 @@ class PlatformManager:
         # 提取 cookie（优先使用完整 cookie bundle，至少包含 session）
         cookies: dict[str, str] = {}
         if isinstance(account.cookies, dict):
-            cookies = {
-                str(k): str(v)
-                for k, v in account.cookies.items()
-                if k and v is not None and str(v).strip()
-            }
+            cookies = {str(k): str(v) for k, v in account.cookies.items() if k and v is not None and str(v).strip()}
 
         session_cookie = cookies.get("session") or self._extract_session_cookie(account.cookies)
         if not session_cookie:
@@ -2611,7 +2655,12 @@ class PlatformManager:
                 )
 
     async def _checkin_newapi_browser(
-        self, provider, account_name: str, headers: dict, cookies: dict, details: dict,
+        self,
+        provider,
+        account_name: str,
+        headers: dict,
+        cookies: dict,
+        details: dict,
     ) -> CheckinResult:
         """使用 Patchright 浏览器执行签到（绕过 CDN TLS 指纹检测）"""
         try:
@@ -2628,10 +2677,14 @@ class PlatformManager:
                 browser_cookies = []
                 domain = provider.domain.replace("https://", "").replace("http://", "")
                 for name, value in cookies.items():
-                    browser_cookies.append({
-                        "name": name, "value": value,
-                        "domain": domain, "path": "/",
-                    })
+                    browser_cookies.append(
+                        {
+                            "name": name,
+                            "value": value,
+                            "domain": domain,
+                            "path": "/",
+                        }
+                    )
                 await context.add_cookies(browser_cookies)
 
                 page = await context.new_page()
@@ -2683,7 +2736,11 @@ class PlatformManager:
                 if provider.needs_manual_check_in():
                     sign_in_path = provider.sign_in_path
                     # 签到 POST 请求需要额外的 Content-Type 和 X-Requested-With 头
-                    checkin_fetch_headers = {**fetch_headers, "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest"}
+                    checkin_fetch_headers = {
+                        **fetch_headers,
+                        "Content-Type": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    }
                     try:
                         resp = await page.evaluate(f"""
                             async () => {{
@@ -2712,12 +2769,18 @@ class PlatformManager:
                                         details["used"] = f"${post_used}"
                                         if delta > 0:
                                             details["checkin_reward"] = f"+${delta}"
-                                            logger.success(f"[{account_name}] ✅ 签到验证通过: 余额 ${pre_quota} → ${post_quota} (奖励 +${delta})")
+                                            logger.success(
+                                                f"[{account_name}] ✅ 签到验证通过: 余额 ${pre_quota} → ${post_quota} (奖励 +${delta})"
+                                            )
                                         elif delta == 0:
-                                            logger.warning(f"[{account_name}] ⚠️ 签到API返回成功但余额未变: ${pre_quota} → ${post_quota}")
+                                            logger.warning(
+                                                f"[{account_name}] ⚠️ 签到API返回成功但余额未变: ${pre_quota} → ${post_quota}"
+                                            )
                                             details["checkin_verify"] = "余额未变(可能已签到过)"
                                         else:
-                                            logger.warning(f"[{account_name}] ⚠️ 签到后余额反而减少: ${pre_quota} → ${post_quota}")
+                                            logger.warning(
+                                                f"[{account_name}] ⚠️ 签到后余额反而减少: ${pre_quota} → ${post_quota}"
+                                            )
                                     elif post_info:
                                         post_quota, post_used = post_info
                                         details["balance"] = f"${post_quota}"
@@ -2813,10 +2876,12 @@ class PlatformManager:
         # 优先使用 patchright，回退到 playwright
         try:
             from patchright.async_api import async_playwright
+
             logger.debug(f"[{account_name}] 使用 Patchright 浏览器")
         except ImportError:
             try:
                 from playwright.async_api import async_playwright
+
                 logger.debug(f"[{account_name}] 使用 Playwright 浏览器")
             except ImportError:
                 logger.warning(f"[{account_name}] Patchright/Playwright 未安装，跳过 WAF bypass")
@@ -2862,6 +2927,7 @@ class PlatformManager:
 
                 # 等待页面完全加载
                 import contextlib
+
                 with contextlib.suppress(Exception):
                     await page.wait_for_load_state("networkidle", timeout=10000)
 
@@ -2881,6 +2947,7 @@ class PlatformManager:
             # 尝试清理临时目录，忽略 Windows 文件锁定错误
             try:
                 import shutil
+
                 shutil.rmtree(temp_dir, ignore_errors=True)
             except Exception:
                 pass
