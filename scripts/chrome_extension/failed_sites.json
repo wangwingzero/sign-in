@@ -1,98 +1,48 @@
 {
-  "generated_at": "2026-02-27T06:04:28.435631+00:00",
+  "generated_at": "2026-02-27T13:52:35.004564+00:00",
   "source": "github_actions",
-  "failed_count": 16,
+  "failed_count": 13,
   "failed_sites": [
     {
-      "provider": "ldoh_infiniteai_cc",
-      "account_name": "主账号_ldoh_infiniteai_cc",
+      "provider": "hotaru",
+      "account_name": "主账号_hotaru",
       "api_user": "",
-      "platform": "NewAPI (ldoh_infiniteai_cc)",
-      "site_url": "https://infiniteai.cc",
-      "login_url": "https://infiniteai.cc/login",
-      "oauth_login_url": "https://infiniteai.cc/auth/login?returnTo=%2F",
+      "platform": "NewAPI (hotaru)",
+      "site_url": "https://api.hotaruapi.top",
+      "login_url": "https://api.hotaruapi.top/login",
+      "oauth_login_url": "https://api.hotaruapi.top/auth/login?returnTo=%2F",
       "reason": "OAuth 登录失败，无法获取 session",
       "failure_kind": "session_missing",
       "runtime_cookie_keys": [],
-      "last_url": "",
+      "last_url": "https://api.hotaruapi.top/login",
       "needs_manual_auth": true,
       "oauth_cookie_blocked": true
     },
     {
-      "provider": "mitchll",
-      "account_name": "主账号_mitchll",
-      "api_user": "678",
-      "platform": "NewAPI (mitchll)",
-      "site_url": "https://api.mitchll.com",
-      "login_url": "https://api.mitchll.com/login",
-      "oauth_login_url": "https://api.mitchll.com/auth/login?returnTo=%2F",
-      "reason": "OAuth 登录失败，无法获取 session",
-      "failure_kind": "session_missing",
+      "provider": "translate6655",
+      "account_name": "主账号_translate6655",
+      "api_user": "",
+      "platform": "NewAPI (translate6655)",
+      "site_url": "https://translate-api.6655.pp.ua",
+      "login_url": "https://translate-api.6655.pp.ua/login",
+      "oauth_login_url": "https://translate-api.6655.pp.ua/auth/login?returnTo=%2F",
+      "reason": "Cookie 已过期",
+      "failure_kind": "cookie_expired",
       "runtime_cookie_keys": [],
       "last_url": "",
       "needs_manual_auth": true,
-      "oauth_cookie_blocked": true
+      "oauth_cookie_blocked": false
     },
     {
-      "provider": "ldoh_anyrouter_top",
-      "account_name": "主账号_ldoh_anyrouter_top",
+      "provider": "yx",
+      "account_name": "主账号_yx",
       "api_user": "",
-      "platform": "NewAPI (ldoh_anyrouter_top)",
-      "site_url": "https://anyrouter.top",
-      "login_url": "https://anyrouter.top/login",
-      "oauth_login_url": "https://anyrouter.top/auth/login?returnTo=%2F",
-      "reason": "OAuth 登录失败，无法获取 session",
-      "failure_kind": "session_missing",
-      "runtime_cookie_keys": [
-        "_c_WBKFRo",
-        "acw_sc__v2",
-        "acw_tc",
-        "cdn_sec_tc"
-      ],
-      "last_url": "",
-      "needs_manual_auth": true,
-      "oauth_cookie_blocked": true
-    },
-    {
-      "provider": "ldoh_lx_blogsummer_cn",
-      "account_name": "主账号_ldoh_lx_blogsummer_cn",
-      "api_user": "",
-      "platform": "NewAPI (ldoh_lx_blogsummer_cn)",
-      "site_url": "https://lx.blogsummer.cn",
-      "login_url": "https://lx.blogsummer.cn/login",
-      "oauth_login_url": "https://lx.blogsummer.cn/auth/login?returnTo=%2F",
-      "reason": "OAuth 登录失败，无法获取 session",
-      "failure_kind": "session_missing",
-      "runtime_cookie_keys": [],
-      "last_url": "",
-      "needs_manual_auth": true,
-      "oauth_cookie_blocked": true
-    },
-    {
-      "provider": "moyu",
-      "account_name": "主账号_moyu",
-      "api_user": "1951",
-      "platform": "NewAPI (moyu)",
-      "site_url": "https://clove.cc.cd",
-      "login_url": "https://clove.cc.cd/login",
-      "oauth_login_url": "https://clove.cc.cd/auth/login?returnTo=%2F",
-      "reason": "OAuth 登录失败，无法获取 session",
-      "failure_kind": "session_missing",
-      "runtime_cookie_keys": [],
-      "last_url": "",
-      "needs_manual_auth": true,
-      "oauth_cookie_blocked": true
-    },
-    {
-      "provider": "ldoh_api_361888_xyz",
-      "account_name": "主账号_ldoh_api_361888_xyz",
-      "api_user": "",
-      "platform": "NewAPI (ldoh_api_361888_xyz)",
-      "site_url": "https://api.361888.xyz",
-      "login_url": "https://api.361888.xyz/login",
-      "oauth_login_url": "https://api.361888.xyz/auth/login?returnTo=%2F",
-      "reason": "OAuth 登录失败，无法获取 session",
-      "failure_kind": "session_missing",
+      "platform": "NewAPI (yx)",
+      "site_url": "https://api.dx001.ggff.net",
+      "login_url": "https://api.dx001.ggff.net/login",
+      "oauth_login_url": "https://api.dx001.ggff.net/auth/login?returnTo=%2F",
+      "reason": "HTTP 403 被拦截(Cookie过期或Cloudflare)",
+      "failure_kind": "cookie_blocked",
       "runtime_cookie_keys": [],
       "last_url": "",
       "needs_manual_auth": true,
@@ -146,12 +96,17 @@
       "site_url": "https://anyrouter.top",
       "login_url": "https://anyrouter.top/login",
       "oauth_login_url": "https://anyrouter.top/auth/login?returnTo=%2F",
-      "reason": "OAuth 超时（>220s）",
-      "failure_kind": "",
-      "runtime_cookie_keys": [],
+      "reason": "OAuth 登录失败，无法获取 session",
+      "failure_kind": "session_missing",
+      "runtime_cookie_keys": [
+        "_c_WBKFRo",
+        "acw_sc__v2",
+        "acw_tc",
+        "cdn_sec_tc"
+      ],
       "last_url": "",
       "needs_manual_auth": true,
-      "oauth_cookie_blocked": false
+      "oauth_cookie_blocked": true
     },
     {
       "provider": "ldoh_anyrouter_top",
@@ -161,12 +116,17 @@
       "site_url": "https://anyrouter.top",
       "login_url": "https://anyrouter.top/login",
       "oauth_login_url": "https://anyrouter.top/auth/login?returnTo=%2F",
-      "reason": "OAuth 超时（>220s）",
-      "failure_kind": "",
-      "runtime_cookie_keys": [],
+      "reason": "OAuth 登录失败，无法获取 session",
+      "failure_kind": "session_missing",
+      "runtime_cookie_keys": [
+        "_c_WBKFRo",
+        "acw_sc__v2",
+        "acw_tc",
+        "cdn_sec_tc"
+      ],
       "last_url": "",
       "needs_manual_auth": true,
-      "oauth_cookie_blocked": false
+      "oauth_cookie_blocked": true
     },
     {
       "provider": "ldoh_anyrouter_top",
@@ -176,12 +136,17 @@
       "site_url": "https://anyrouter.top",
       "login_url": "https://anyrouter.top/login",
       "oauth_login_url": "https://anyrouter.top/auth/login?returnTo=%2F",
-      "reason": "OAuth 超时（>220s）",
-      "failure_kind": "",
-      "runtime_cookie_keys": [],
+      "reason": "OAuth 登录失败，无法获取 session",
+      "failure_kind": "session_missing",
+      "runtime_cookie_keys": [
+        "_c_WBKFRo",
+        "acw_sc__v2",
+        "acw_tc",
+        "cdn_sec_tc"
+      ],
       "last_url": "",
       "needs_manual_auth": true,
-      "oauth_cookie_blocked": false
+      "oauth_cookie_blocked": true
     },
     {
       "provider": "ldoh_anyrouter_top",
@@ -191,12 +156,17 @@
       "site_url": "https://anyrouter.top",
       "login_url": "https://anyrouter.top/login",
       "oauth_login_url": "https://anyrouter.top/auth/login?returnTo=%2F",
-      "reason": "OAuth 超时（>220s）",
-      "failure_kind": "",
-      "runtime_cookie_keys": [],
+      "reason": "OAuth 登录失败，无法获取 session",
+      "failure_kind": "session_missing",
+      "runtime_cookie_keys": [
+        "_c_WBKFRo",
+        "acw_sc__v2",
+        "acw_tc",
+        "cdn_sec_tc"
+      ],
       "last_url": "",
       "needs_manual_auth": true,
-      "oauth_cookie_blocked": false
+      "oauth_cookie_blocked": true
     },
     {
       "provider": "ldoh_anyrouter_top",
@@ -206,12 +176,17 @@
       "site_url": "https://anyrouter.top",
       "login_url": "https://anyrouter.top/login",
       "oauth_login_url": "https://anyrouter.top/auth/login?returnTo=%2F",
-      "reason": "OAuth 超时（>220s）",
-      "failure_kind": "",
-      "runtime_cookie_keys": [],
+      "reason": "OAuth 登录失败，无法获取 session",
+      "failure_kind": "session_missing",
+      "runtime_cookie_keys": [
+        "_c_WBKFRo",
+        "acw_sc__v2",
+        "acw_tc",
+        "cdn_sec_tc"
+      ],
       "last_url": "",
       "needs_manual_auth": true,
-      "oauth_cookie_blocked": false
+      "oauth_cookie_blocked": true
     },
     {
       "provider": "ldoh_anyrouter_top",
@@ -221,12 +196,17 @@
       "site_url": "https://anyrouter.top",
       "login_url": "https://anyrouter.top/login",
       "oauth_login_url": "https://anyrouter.top/auth/login?returnTo=%2F",
-      "reason": "OAuth 超时（>220s）",
-      "failure_kind": "",
-      "runtime_cookie_keys": [],
+      "reason": "OAuth 登录失败，无法获取 session",
+      "failure_kind": "session_missing",
+      "runtime_cookie_keys": [
+        "_c_WBKFRo",
+        "acw_sc__v2",
+        "acw_tc",
+        "cdn_sec_tc"
+      ],
       "last_url": "",
       "needs_manual_auth": true,
-      "oauth_cookie_blocked": false
+      "oauth_cookie_blocked": true
     },
     {
       "provider": "ldoh_anyrouter_top",
@@ -236,12 +216,17 @@
       "site_url": "https://anyrouter.top",
       "login_url": "https://anyrouter.top/login",
       "oauth_login_url": "https://anyrouter.top/auth/login?returnTo=%2F",
-      "reason": "OAuth 超时（>220s）",
-      "failure_kind": "",
-      "runtime_cookie_keys": [],
+      "reason": "OAuth 登录失败，无法获取 session",
+      "failure_kind": "session_missing",
+      "runtime_cookie_keys": [
+        "_c_WBKFRo",
+        "acw_sc__v2",
+        "acw_tc",
+        "cdn_sec_tc"
+      ],
       "last_url": "",
       "needs_manual_auth": true,
-      "oauth_cookie_blocked": false
+      "oauth_cookie_blocked": true
     },
     {
       "provider": "ldoh_anyrouter_top",
@@ -251,12 +236,17 @@
       "site_url": "https://anyrouter.top",
       "login_url": "https://anyrouter.top/login",
       "oauth_login_url": "https://anyrouter.top/auth/login?returnTo=%2F",
-      "reason": "OAuth 超时（>220s）",
-      "failure_kind": "",
-      "runtime_cookie_keys": [],
+      "reason": "OAuth 登录失败，无法获取 session",
+      "failure_kind": "session_missing",
+      "runtime_cookie_keys": [
+        "_c_WBKFRo",
+        "acw_sc__v2",
+        "acw_tc",
+        "cdn_sec_tc"
+      ],
       "last_url": "",
       "needs_manual_auth": true,
-      "oauth_cookie_blocked": false
+      "oauth_cookie_blocked": true
     }
   ]
 }
