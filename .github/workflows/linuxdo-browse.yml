@@ -2,8 +2,9 @@ name: LinuxDO Browse & Check-in
 
 on:
   schedule:
-    # 每天 3 次：24小时平均分配，北京时间 0点、8点、16点
-    - cron: '0 16,0,8 * * *'
+    # 每天 2 次：避开 CF 高防护时段（北京 08:00-14:00）
+    # UTC 16 = 北京 00:00 | UTC 22 = 北京 06:00
+    - cron: '0 16,22 * * *'
 
   workflow_dispatch:
     inputs:
