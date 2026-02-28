@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-02-27T13:52:35.004564+00:00",
+  "generated_at": "2026-02-28T02:34:26.207143+00:00",
   "source": "github_actions",
   "failed_count": 13,
   "failed_sites": [
@@ -14,7 +14,7 @@
       "reason": "OAuth 登录失败，无法获取 session",
       "failure_kind": "session_missing",
       "runtime_cookie_keys": [],
-      "last_url": "https://api.hotaruapi.top/login",
+      "last_url": "",
       "needs_manual_auth": true,
       "oauth_cookie_blocked": true
     },
@@ -26,12 +26,12 @@
       "site_url": "https://translate-api.6655.pp.ua",
       "login_url": "https://translate-api.6655.pp.ua/login",
       "oauth_login_url": "https://translate-api.6655.pp.ua/auth/login?returnTo=%2F",
-      "reason": "Cookie 已过期",
-      "failure_kind": "cookie_expired",
+      "reason": "OAuth 登录失败，无法获取 session",
+      "failure_kind": "session_missing",
       "runtime_cookie_keys": [],
       "last_url": "",
       "needs_manual_auth": true,
-      "oauth_cookie_blocked": false
+      "oauth_cookie_blocked": true
     },
     {
       "provider": "yx",
@@ -41,9 +41,11 @@
       "site_url": "https://api.dx001.ggff.net",
       "login_url": "https://api.dx001.ggff.net/login",
       "oauth_login_url": "https://api.dx001.ggff.net/auth/login?returnTo=%2F",
-      "reason": "HTTP 403 被拦截(Cookie过期或Cloudflare)",
-      "failure_kind": "cookie_blocked",
-      "runtime_cookie_keys": [],
+      "reason": "OAuth 登录失败，无法获取 session",
+      "failure_kind": "session_missing",
+      "runtime_cookie_keys": [
+        "cf_clearance"
+      ],
       "last_url": "",
       "needs_manual_auth": true,
       "oauth_cookie_blocked": true
