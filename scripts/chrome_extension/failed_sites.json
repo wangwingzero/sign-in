@@ -1,6 +1,22 @@
 {
-  "generated_at": "2026-03-01T03:26:43.305746+00:00",
+  "generated_at": "2026-03-01T13:41:52.510280+00:00",
   "source": "github_actions",
-  "failed_count": 0,
-  "failed_sites": []
+  "failed_count": 1,
+  "failed_sites": [
+    {
+      "provider": "kfcapi",
+      "account_name": "主账号_kfcapi",
+      "api_user": "8579",
+      "platform": "NewAPI (kfcapi)",
+      "site_url": "https://kfc-api.sxxe.net",
+      "login_url": "https://kfc-api.sxxe.net/login",
+      "oauth_login_url": "https://kfc-api.sxxe.net/auth/login?returnTo=%2F",
+      "reason": "LinuxDO 登录失败",
+      "failure_kind": "",
+      "runtime_cookie_keys": [],
+      "last_url": "",
+      "needs_manual_auth": true,
+      "oauth_cookie_blocked": true
+    }
+  ]
 }
