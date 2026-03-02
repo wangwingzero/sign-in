@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "签到助手（NEWAPI + LinuxDO）",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "description": "NEWAPI 失败站点补录 + LinuxDO Cookie 一键提取",
   "permissions": [
     "cookies",

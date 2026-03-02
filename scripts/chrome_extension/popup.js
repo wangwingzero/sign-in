@@ -688,45 +688,82 @@ function renderLinuxdoAccountList() {
 
   const lines = linuxdoExtractedAccounts.map((acc, idx) => {
     const cookieKeys = Object.keys(acc.cookies || {});
-    return `${idx + 1}. ${acc.username || "未知用户"} (${cookieKeys.length} 个 cookie)`;
+    const display = acc.email || acc.username || "未知用户";
+    const forumTag = acc.forum_username ? ` [${acc.forum_username}]` : "";
+    return `${idx + 1}. ${display}${forumTag} (${cookieKeys.length} 个 cookie)`;
   });
   linuxdoAccountListEl.textContent = lines.join("\n");
   linuxdoMetaEl.textContent = `已提取 ${linuxdoExtractedAccounts.length} 个账号的 Cookie`;
 }
 
-async function getLinuxdoUsername(tab) {
-  if (!tab?.id) return "";
+async function getLinuxdoUserInfo(tab) {
+  // 返回 { username, email }，通过 Discourse API 分两步获取
+  if (!tab?.id) return { username: "", email: "" };
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: () => {
-        // 尝试从 Discourse 页面获取当前用户名
-        // 方法1: 从 meta 标签获取
-        const metaUser = document.querySelector('meta[name="current-user-username"]');
-        if (metaUser?.content) return metaUser.content;
-        // 方法2: 从 Discourse __container__ 获取
+      func: async () => {
+        let username = "";
+        let email = "";
+
+        // 第一步：获取用户名
+        // 方法1: 通过 Discourse session API
         try {
-          const appEl = document.querySelector(".ember-application");
-          if (appEl) {
-            const userLink = document.querySelector("a.current-user, a[href*='/u/'], .header-dropdown-toggle.current-user a");
-            if (userLink?.href) {
-              const match = userLink.href.match(/\/u\/([^/]+)/);
-              if (match) return match[1];
-            }
+          const resp = await fetch("/session/current.json", { credentials: "include" });
+          if (resp.ok) {
+            const data = await resp.json();
+            username = data?.current_user?.username || "";
           }
         } catch {}
-        // 方法3: 从 header 的用户头像链接获取
-        const avatarLink = document.querySelector("#current-user a[href*='/u/']");
-        if (avatarLink?.href) {
-          const match = avatarLink.href.match(/\/u\/([^/]+)/);
-          if (match) return match[1];
+
+        // 方法2: 从 meta 标签
+        if (!username) {
+          const meta = document.querySelector('meta[name="current-user-username"]');
+          if (meta?.content) username = meta.content;
         }
-        return "";
+
+        // 方法3: 从 Discourse PreloadStore
+        if (!username) {
+          try {
+            const preloaded = document.getElementById("data-preloaded");
+            if (preloaded?.dataset?.preloaded) {
+              const data = JSON.parse(preloaded.dataset.preloaded);
+              const currentUser = data["currentUser"] ? JSON.parse(data["currentUser"]) : null;
+              if (currentUser?.username) username = currentUser.username;
+            }
+          } catch {}
+        }
+
+        // 方法4: 从页面链接
+        if (!username) {
+          const link = document.querySelector("#current-user a[href*='/u/'], a.icon[href*='/u/']");
+          if (link?.href) {
+            const m = link.href.match(/\/u\/([^/]+)/);
+            if (m) username = m[1];
+          }
+        }
+
+        // 第二步：用用户名获取邮箱
+        if (username) {
+          try {
+            const resp = await fetch(`/u/${username}/emails.json`, { credentials: "include" });
+            if (resp.ok) {
+              const data = await resp.json();
+              email = data?.email || "";
+            }
+          } catch {}
+        }
+
+        return { username, email };
       },
     });
-    return String(results?.[0]?.result || "").trim();
+    const result = results?.[0]?.result || {};
+    return {
+      username: String(result.username || "").trim(),
+      email: String(result.email || "").trim(),
+    };
   } catch {
-    return "";
+    return { username: "", email: "" };
   }
 }
 
@@ -764,16 +801,26 @@ async function extractLinuxdoCookies() {
     return;
   }
 
-  // 获取当前登录的用户名
-  const username = await getLinuxdoUsername(tab);
+  // 获取当前登录的用户信息（邮箱 + 用户名）
+  const userInfo = await getLinuxdoUserInfo(tab);
+  // 优先用邮箱作为标识（与 LINUXDO_ACCOUNTS 的 username 字段一致）
+  const identifier = userInfo.email || userInfo.username || "";
 
-  // 检查是否已提取过该用户
-  const existingIdx = linuxdoExtractedAccounts.findIndex(
-    (acc) => acc.username && acc.username === username
-  );
+  // 检查是否已提取过该用户（按邮箱或用户名匹配）
+  const existingIdx = linuxdoExtractedAccounts.findIndex((acc) => {
+    if (!identifier) return false;
+    const id = identifier.toLowerCase();
+    return (
+      (acc.username && acc.username.toLowerCase() === id) ||
+      (acc.email && acc.email.toLowerCase() === id) ||
+      (acc.forum_username && acc.forum_username.toLowerCase() === id)
+    );
+  });
 
   const accountEntry = {
-    username: username || `账号${linuxdoExtractedAccounts.length + 1}`,
+    username: identifier || `账号${linuxdoExtractedAccounts.length + 1}`,
+    forum_username: userInfo.username || "",
+    email: userInfo.email || "",
     cookies,
     extracted_at: new Date().toISOString(),
   };
@@ -813,11 +860,30 @@ function generateLinuxdoAccountsJson() {
     }
   }
 
-  // 构建 username -> 已有配置 的映射
+  // 构建多维度匹配映射（邮箱、用户名、name 都可能匹配）
   const existingMap = new Map();
   for (const acc of existingAccounts) {
-    const key = String(acc.username || acc.name || "").trim().toLowerCase();
-    if (key) existingMap.set(key, acc);
+    const keys = [
+      String(acc.username || "").trim().toLowerCase(),
+      String(acc.name || "").trim().toLowerCase(),
+    ].filter(Boolean);
+    for (const key of keys) {
+      if (!existingMap.has(key)) existingMap.set(key, acc);
+    }
+  }
+
+  function findExisting(acc) {
+    // 按邮箱、username、论坛用户名依次匹配
+    const candidates = [
+      String(acc.email || "").trim().toLowerCase(),
+      String(acc.username || "").trim().toLowerCase(),
+      String(acc.forum_username || "").trim().toLowerCase(),
+    ].filter(Boolean);
+    for (const key of candidates) {
+      const found = existingMap.get(key);
+      if (found) return found;
+    }
+    return null;
   }
 
   const accounts = linuxdoExtractedAccounts.map((acc) => {
@@ -826,27 +892,35 @@ function generateLinuxdoAccountsJson() {
       .map(([k, v]) => `${k}=${v}`)
       .join("; ");
 
-    const username = acc.username || "";
-    const key = username.toLowerCase();
-    const existing = existingMap.get(key);
+    const existing = findExisting(acc);
+    // 优先用邮箱作为 username（与 LINUXDO_ACCOUNTS 格式一致）
+    const finalUsername = existing?.username || acc.email || acc.username || "";
 
-    // 合并：用提取的新 cookie，保留已有的 password/browse_minutes/name
-    return {
-      username: existing?.username || username,
+    // 合并：用提取的新 cookie，保留已有的 password/browse_minutes/name 等
+    const result = {
+      username: finalUsername,
       password: existing?.password || "",
-      name: existing?.name || username,
+      name: existing?.name || acc.forum_username || finalUsername,
       browse_minutes: existing?.browse_minutes ?? 20,
       cookies: cookieStr,
     };
+    // 保留已有配置中的 checkin_sites / exclude_sites
+    if (existing?.checkin_sites) result.checkin_sites = existing.checkin_sites;
+    if (existing?.exclude_sites) result.exclude_sites = existing.exclude_sites;
+    return result;
   });
 
   // 把没有被提取到新 cookie 的已有账号也保留（原样输出）
   for (const existing of existingAccounts) {
-    const key = String(existing.username || existing.name || "").trim().toLowerCase();
-    const alreadyIncluded = accounts.some(
-      (a) => (a.username || "").toLowerCase() === key
-    );
-    if (!alreadyIncluded && key) {
+    const existingKeys = [
+      String(existing.username || "").trim().toLowerCase(),
+      String(existing.name || "").trim().toLowerCase(),
+    ].filter(Boolean);
+    const alreadyIncluded = accounts.some((a) => {
+      const aKey = (a.username || "").toLowerCase();
+      return existingKeys.includes(aKey);
+    });
+    if (!alreadyIncluded && existingKeys.length) {
       accounts.push({ ...existing });
     }
   }
