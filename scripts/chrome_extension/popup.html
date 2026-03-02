@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NEWAPI 人工补录助手</title>
+  <title>签到助手（NEWAPI + LinuxDO）</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -79,6 +79,7 @@
       min-height: 88px;
     }
     #resultJson { min-height: 150px; }
+    #linuxdoResultJson { min-height: 120px; }
     .hint {
       font-size: 11px;
       color: #99acc9;
@@ -100,7 +101,7 @@
   </style>
 </head>
 <body>
-  <h1>NEWAPI 人工补录助手</h1>
+  <h1>签到助手</h1>
 
   <div id="status" class="status">准备就绪</div>
 
@@ -134,6 +135,33 @@
     </div>
     <textarea id="resultJson" placeholder="生成后的 NEWAPI_ACCOUNTS 会显示在这里"></textarea>
     <div id="extractSummary" class="hint">未开始提取</div>
+  </div>
+
+  <div class="card" style="border-color: #2f6b4f;">
+    <div class="title" style="color: #7fd4a8;">LinuxDO Cookie 提取（人机验证后用）</div>
+    <div class="meta" id="linuxdoMeta">登录 linux.do 后点击提取，逐个账号操作</div>
+    <div class="btn-row">
+      <button id="linuxdoExtractBtn" class="btn-success">提取当前 LinuxDO Cookie</button>
+      <button id="linuxdoClearBtn" class="btn-secondary">清空已提取</button>
+    </div>
+    <div id="linuxdoAccountList" class="hint">尚未提取任何账号</div>
+    <div style="margin-top: 8px;">
+      <textarea id="linuxdoBaseAccounts" placeholder='可选：粘贴现有 LINUXDO_ACCOUNTS JSON（生成时自动合并保留 password/browse_minutes）' style="min-height: 60px;"></textarea>
+    </div>
+    <div style="margin-top: 8px;">
+      <div class="btn-row">
+        <button id="linuxdoGenerateBtn" class="btn-warning">生成 LINUXDO_ACCOUNTS</button>
+        <button id="linuxdoCopyBtn" class="btn-secondary">复制结果</button>
+      </div>
+    </div>
+    <textarea id="linuxdoResultJson" placeholder="提取完所有账号后，点击生成按钮"></textarea>
+    <div class="hint">使用方法：
+1. 可选：粘贴现有 LINUXDO_ACCOUNTS（保留密码和配置）
+2. 在浏览器登录 linux.do（通过人机验证）
+3. 点击「提取当前 LinuxDO Cookie」
+4. 退出登录，换下一个账号，重复 2-3
+5. 全部提取完后点「生成 LINUXDO_ACCOUNTS」
+6. 复制结果更新到 GitHub Secret</div>
   </div>
 
   <div class="card">

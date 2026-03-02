@@ -52,6 +52,7 @@ class PlatformManager:
         # 连续失败跟踪：达到阈值后自动跳过站点，节省 CI 时间
         self._failure_tracker = FailureTracker()
         self._failure_threshold = int(os.environ.get("FAILURE_THRESHOLD", "3"))
+        self._failure_retry_hours = int(os.environ.get("FAILURE_RETRY_HOURS", "24"))
         # NEWAPI_ACCOUNTS 覆盖文件：Secrets 只读时，用文件缓存“最新可用 cookie”覆盖旧配置
         self._newapi_override_file = os.getenv("NEWAPI_ACCOUNTS_OVERRIDE_FILE", ".newapi_accounts_override.json")
         self._newapi_failed_sites_file = os.getenv(
@@ -1761,7 +1762,7 @@ class PlatformManager:
                 not is_anyrouter
                 and not is_override
                 and not is_whitelisted
-                and self._failure_tracker.should_skip(prov_name, account_name_for_skip, self._failure_threshold)
+                and self._failure_tracker.should_skip(prov_name, account_name_for_skip, self._failure_threshold, self._failure_retry_hours)
             ):
                 fail_count = self._failure_tracker.get_failure_count(prov_name, account_name_for_skip)
                 logger.warning(
@@ -1777,6 +1778,14 @@ class PlatformManager:
                 )
                 skipped_by_tracker.append(prov_name)
             else:
+                # 检测周期重试：失败次数已达阈值但 should_skip 返回 False，说明是到期重试
+                fail_count = self._failure_tracker.get_failure_count(prov_name, account_name_for_skip)
+                if fail_count >= self._failure_threshold and not is_anyrouter and not is_override and not is_whitelisted:
+                    self._failure_tracker.record_retry(prov_name, account_name_for_skip)
+                    logger.info(
+                        f"[{account_name_for_skip}] 连续失败 {fail_count} 次，"
+                        f"但已超过 {self._failure_retry_hours}h 周期重试间隔，本轮重试"
+                    )
                 providers_after_skip[prov_name] = prov
 
         if skipped_by_tracker:

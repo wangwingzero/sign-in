@@ -178,20 +178,18 @@ class LinuxDOAdapter(BasePlatformAdapter):
                 return True
             logger.warning(f"[{self.account_name}] 缓存 Cookie 无效，尝试浏览器登录")
 
-        # 优先级 3: 浏览器登录（需要用户名密码）
+        # 优先级 3: 浏览器登录已不可用（LinuxDO 启用了人机验证 CAPTCHA）
+        # 自动化脚本无法通过交互式 CAPTCHA，只能通过手动提取 Cookie 登录
         if not self.username or not self.password:
             logger.error(f"[{self.account_name}] Cookie 无效且未提供用户名密码，无法登录")
             return False
 
-        logger.info(f"[{self.account_name}] 使用浏览器登录...")
-        success = await self._login_via_browser()
-
-        if success:
-            self._login_method = "browser"
-            # 保存 Cookie 到缓存
-            self._save_cookies_to_cache()
-
-        return success
+        logger.warning(
+            f"[{self.account_name}] Cookie 无效或过期，"
+            f"且 LinuxDO 已启用人机验证（CAPTCHA），无法自动登录。"
+            f"请手动登录后提取 Cookie 更新配置。"
+        )
+        return False
 
     async def _login_with_cookies(self, cookies: dict) -> bool:
         """使用 Cookie 直接登录（跳过浏览器）

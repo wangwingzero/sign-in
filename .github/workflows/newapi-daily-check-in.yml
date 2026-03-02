@@ -2,7 +2,9 @@ name: NewAPI Daily Check-in
 
 on:
   schedule:
-    - cron: '0 0,12 * * *'  # 每天 2 次（UTC 0点和12点，即北京时间 8点和20点）
+    # 每天 2 次：避开 CF 高防护时段（北京 08:00-14:00）
+    # UTC 14 = 北京 22:00 | UTC 23 = 北京 07:00
+    - cron: '0 14,23 * * *'
 
   workflow_dispatch:
     inputs:
@@ -81,6 +83,9 @@ jobs:
 
           # 连续失败跳过阈值（连续失败 N 次后自动跳过该站点，默认 3）
           FAILURE_THRESHOLD: ${{ secrets.FAILURE_THRESHOLD || '3' }}
+
+          # 周期重试间隔（小时）：被跳过的站点超过该时长后自动重试，默认 24
+          FAILURE_RETRY_HOURS: ${{ secrets.FAILURE_RETRY_HOURS || '24' }}
 
           # Debug 模式（设置为 true 开启截图和详细日志）
           # DEBUG: "true"

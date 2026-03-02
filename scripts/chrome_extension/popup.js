@@ -5,6 +5,7 @@ const STORAGE_KEYS = {
   failedReportOverrideEnabled: "manual_patch_failed_report_override_enabled",
   failedReportOverridePayload: "manual_patch_failed_report_override_payload",
   failedReportOverrideFileName: "manual_patch_failed_report_override_file_name",
+  linuxdoAccounts: "linuxdo_extracted_accounts",
 };
 
 const statusEl = document.getElementById("status");
@@ -646,8 +647,259 @@ copyBtn.addEventListener("click", async () => {
   await copyResult();
 });
 
+// ==================== LinuxDO Cookie 提取 ====================
+
+const linuxdoExtractBtn = document.getElementById("linuxdoExtractBtn");
+const linuxdoClearBtn = document.getElementById("linuxdoClearBtn");
+const linuxdoGenerateBtn = document.getElementById("linuxdoGenerateBtn");
+const linuxdoCopyBtn = document.getElementById("linuxdoCopyBtn");
+const linuxdoAccountListEl = document.getElementById("linuxdoAccountList");
+const linuxdoMetaEl = document.getElementById("linuxdoMeta");
+const linuxdoResultJsonEl = document.getElementById("linuxdoResultJson");
+const linuxdoBaseAccountsEl = document.getElementById("linuxdoBaseAccounts");
+
+const LINUXDO_DOMAIN = "linux.do";
+const LINUXDO_COOKIE_NAMES = ["_t", "_forum_session"];
+
+// 内存中保存已提取的 LinuxDO 账号列表
+let linuxdoExtractedAccounts = [];
+
+async function loadLinuxdoAccounts() {
+  const data = await storageGet([STORAGE_KEYS.linuxdoAccounts]);
+  const raw = data[STORAGE_KEYS.linuxdoAccounts];
+  if (raw) {
+    linuxdoExtractedAccounts = safeJsonParse(raw, []);
+  }
+  renderLinuxdoAccountList();
+}
+
+async function saveLinuxdoAccounts() {
+  await storageSet({
+    [STORAGE_KEYS.linuxdoAccounts]: JSON.stringify(linuxdoExtractedAccounts),
+  });
+}
+
+function renderLinuxdoAccountList() {
+  if (!linuxdoExtractedAccounts.length) {
+    linuxdoAccountListEl.textContent = "尚未提取任何账号";
+    linuxdoMetaEl.textContent = "登录 linux.do 后点击提取，逐个账号操作";
+    return;
+  }
+
+  const lines = linuxdoExtractedAccounts.map((acc, idx) => {
+    const cookieKeys = Object.keys(acc.cookies || {});
+    return `${idx + 1}. ${acc.username || "未知用户"} (${cookieKeys.length} 个 cookie)`;
+  });
+  linuxdoAccountListEl.textContent = lines.join("\n");
+  linuxdoMetaEl.textContent = `已提取 ${linuxdoExtractedAccounts.length} 个账号的 Cookie`;
+}
+
+async function getLinuxdoUsername(tab) {
+  if (!tab?.id) return "";
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => {
+        // 尝试从 Discourse 页面获取当前用户名
+        // 方法1: 从 meta 标签获取
+        const metaUser = document.querySelector('meta[name="current-user-username"]');
+        if (metaUser?.content) return metaUser.content;
+        // 方法2: 从 Discourse __container__ 获取
+        try {
+          const appEl = document.querySelector(".ember-application");
+          if (appEl) {
+            const userLink = document.querySelector("a.current-user, a[href*='/u/'], .header-dropdown-toggle.current-user a");
+            if (userLink?.href) {
+              const match = userLink.href.match(/\/u\/([^/]+)/);
+              if (match) return match[1];
+            }
+          }
+        } catch {}
+        // 方法3: 从 header 的用户头像链接获取
+        const avatarLink = document.querySelector("#current-user a[href*='/u/']");
+        if (avatarLink?.href) {
+          const match = avatarLink.href.match(/\/u\/([^/]+)/);
+          if (match) return match[1];
+        }
+        return "";
+      },
+    });
+    return String(results?.[0]?.result || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+async function extractLinuxdoCookies() {
+  // 检查当前标签页是否在 linux.do
+  const tab = await getCurrentActiveTab();
+  const tabUrl = String(tab?.url || "").trim();
+
+  if (!tabUrl.includes("linux.do")) {
+    setStatus("请先在浏览器中打开 linux.do 并登录，再点击提取。");
+    return;
+  }
+
+  // 提取关键 Cookie
+  const cookies = {};
+  for (const name of LINUXDO_COOKIE_NAMES) {
+    try {
+      const cookie = await getCookie({ url: "https://linux.do", name });
+      if (cookie?.value) {
+        cookies[name] = cookie.value;
+      }
+    } catch {}
+  }
+
+  // 也尝试获取 cf_clearance（Cloudflare cookie，可选）
+  try {
+    const cfCookie = await getCookie({ url: "https://linux.do", name: "cf_clearance" });
+    if (cfCookie?.value) {
+      cookies["cf_clearance"] = cfCookie.value;
+    }
+  } catch {}
+
+  if (!cookies._t && !cookies._forum_session) {
+    setStatus("未找到 LinuxDO 登录 Cookie（_t / _forum_session）。请确认已登录。");
+    return;
+  }
+
+  // 获取当前登录的用户名
+  const username = await getLinuxdoUsername(tab);
+
+  // 检查是否已提取过该用户
+  const existingIdx = linuxdoExtractedAccounts.findIndex(
+    (acc) => acc.username && acc.username === username
+  );
+
+  const accountEntry = {
+    username: username || `账号${linuxdoExtractedAccounts.length + 1}`,
+    cookies,
+    extracted_at: new Date().toISOString(),
+  };
+
+  if (existingIdx >= 0) {
+    // 更新已有记录
+    linuxdoExtractedAccounts[existingIdx] = accountEntry;
+    setStatus(`已更新 ${accountEntry.username} 的 Cookie（${Object.keys(cookies).length} 个）`);
+  } else {
+    linuxdoExtractedAccounts.push(accountEntry);
+    setStatus(`已提取 ${accountEntry.username} 的 Cookie（${Object.keys(cookies).length} 个）`);
+  }
+
+  await saveLinuxdoAccounts();
+  renderLinuxdoAccountList();
+}
+
+function generateLinuxdoAccountsJson() {
+  if (!linuxdoExtractedAccounts.length) {
+    setStatus("没有已提取的 LinuxDO 账号，请先提取。");
+    return;
+  }
+
+  // 尝试解析已有的 LINUXDO_ACCOUNTS 配置（用于合并保留 password/browse_minutes）
+  let existingAccounts = [];
+  const baseRaw = linuxdoBaseAccountsEl.value.trim();
+  if (baseRaw) {
+    try {
+      existingAccounts = JSON.parse(baseRaw);
+      if (!Array.isArray(existingAccounts)) {
+        setStatus("现有 LINUXDO_ACCOUNTS 不是 JSON 数组，请检查格式。");
+        return;
+      }
+    } catch {
+      setStatus("现有 LINUXDO_ACCOUNTS JSON 解析失败，请检查格式。");
+      return;
+    }
+  }
+
+  // 构建 username -> 已有配置 的映射
+  const existingMap = new Map();
+  for (const acc of existingAccounts) {
+    const key = String(acc.username || acc.name || "").trim().toLowerCase();
+    if (key) existingMap.set(key, acc);
+  }
+
+  const accounts = linuxdoExtractedAccounts.map((acc) => {
+    // 把 cookies 字典转成字符串格式: "_t=xxx; _forum_session=xxx"
+    const cookieStr = Object.entries(acc.cookies || {})
+      .map(([k, v]) => `${k}=${v}`)
+      .join("; ");
+
+    const username = acc.username || "";
+    const key = username.toLowerCase();
+    const existing = existingMap.get(key);
+
+    // 合并：用提取的新 cookie，保留已有的 password/browse_minutes/name
+    return {
+      username: existing?.username || username,
+      password: existing?.password || "",
+      name: existing?.name || username,
+      browse_minutes: existing?.browse_minutes ?? 20,
+      cookies: cookieStr,
+    };
+  });
+
+  // 把没有被提取到新 cookie 的已有账号也保留（原样输出）
+  for (const existing of existingAccounts) {
+    const key = String(existing.username || existing.name || "").trim().toLowerCase();
+    const alreadyIncluded = accounts.some(
+      (a) => (a.username || "").toLowerCase() === key
+    );
+    if (!alreadyIncluded && key) {
+      accounts.push({ ...existing });
+    }
+  }
+
+  const json = JSON.stringify(accounts, null, 2);
+  linuxdoResultJsonEl.value = json;
+
+  const mergedCount = existingAccounts.length ? `（已合并 ${existingAccounts.length} 个现有配置）` : "";
+  setStatus(`已生成 LINUXDO_ACCOUNTS（${accounts.length} 个账号）${mergedCount}。可直接复制使用。`);
+}
+
+async function copyLinuxdoResult() {
+  const text = linuxdoResultJsonEl.value.trim();
+  if (!text) {
+    setStatus("没有可复制的 LinuxDO 结果。先点「生成」。");
+    return;
+  }
+  await navigator.clipboard.writeText(text);
+  setStatus("已复制 LINUXDO_ACCOUNTS，粘贴到 GitHub Secret 即可。");
+}
+
+async function clearLinuxdoAccounts() {
+  linuxdoExtractedAccounts = [];
+  await saveLinuxdoAccounts();
+  renderLinuxdoAccountList();
+  linuxdoResultJsonEl.value = "";
+  setStatus("已清空 LinuxDO 提取记录。");
+}
+
+linuxdoExtractBtn.addEventListener("click", async () => {
+  linuxdoExtractBtn.disabled = true;
+  try {
+    await extractLinuxdoCookies();
+  } finally {
+    linuxdoExtractBtn.disabled = false;
+  }
+});
+
+linuxdoClearBtn.addEventListener("click", async () => {
+  await clearLinuxdoAccounts();
+});
+
+linuxdoGenerateBtn.addEventListener("click", () => {
+  generateLinuxdoAccountsJson();
+});
+
+linuxdoCopyBtn.addEventListener("click", async () => {
+  await copyLinuxdoResult();
+});
+
 (async function init() {
   await restoreDraft();
+  await loadLinuxdoAccounts();
   const restored = await restoreImportedFailedReport();
   if (restored) {
     return;

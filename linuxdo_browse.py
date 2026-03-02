@@ -76,6 +76,7 @@ async def main():
         sys.exit(1)
 
     results = []
+    cookie_expired_accounts = []
 
     for i, account in enumerate(config.linuxdo_accounts):
         logger.info("-" * 40)
@@ -91,61 +92,31 @@ async def main():
         # 获取 cookies
         cookies = account.cookies if account.cookies else None
 
-        # 登录重试配置：每次重试都打开新浏览器实例
-        max_login_retries = 5
-        retry_delays = [5, 10, 15, 20, 25]  # 每次重试前等待的秒数
-        
+        # 创建 adapter
+        adapter = LinuxDOAdapter(
+            username=account.username,
+            password=account.password,
+            cookies=cookies,
+            account_name=account.get_display_name(i),
+            browse_minutes=account.browse_minutes,
+        )
+
         login_success = False
-        adapter = None
-        last_error = None
-        
-        for attempt in range(1, max_login_retries + 1):
-            # 每次尝试都创建新的 adapter（新浏览器实例）
-            adapter = LinuxDOAdapter(
-                username=account.username,
-                password=account.password,
-                cookies=cookies,
-                account_name=account.get_display_name(i),
-                browse_minutes=account.browse_minutes,
-            )
-            
-            try:
-                logger.info(f"登录尝试 {attempt}/{max_login_retries}...")
-                login_success = await adapter.login()
-                
-                if login_success:
-                    logger.success(f"登录成功！方式: {adapter._login_method}")
-                    break
-                else:
-                    logger.warning(f"登录尝试 {attempt}/{max_login_retries} 失败")
-                    
-            except Exception as e:
-                last_error = e
-                logger.warning(f"登录尝试 {attempt}/{max_login_retries} 出错: {e}")
-            
-            # 如果不是最后一次尝试，关闭浏览器并等待后重试
-            if attempt < max_login_retries:
-                try:
-                    await adapter.cleanup()
-                    logger.info("浏览器已关闭")
-                except Exception as e:
-                    logger.warning(f"清理资源时出错: {e}")
-                
-                wait_time = retry_delays[attempt - 1]
-                logger.info(f"等待 {wait_time} 秒后打开新浏览器重试...")
-                await asyncio.sleep(wait_time)
-                adapter = None
-        
-        # 检查最终登录结果
+        try:
+            login_success = await adapter.login()
+            if login_success:
+                logger.success(f"登录成功！方式: {adapter._login_method}")
+        except Exception as e:
+            logger.error(f"登录出错: {e}")
+
         if not login_success:
-            error_msg = str(last_error)[:50] if last_error else "登录失败"
-            logger.error(f"账号 {account.get_display_name(i)} 登录失败，已重试 {max_login_retries} 次")
-            results.append(f"❌ {account.get_display_name(i)}: {error_msg}")
-            if adapter:
-                try:
-                    await adapter.cleanup()
-                except Exception:
-                    pass
+            logger.error(f"账号 {account.get_display_name(i)} 登录失败（Cookie 无效或过期）")
+            results.append(f"❌ {account.get_display_name(i)}: Cookie 过期，请手动更新")
+            cookie_expired_accounts.append(account.get_display_name(i))
+            try:
+                await adapter.cleanup()
+            except Exception:
+                pass
             continue
         
         # 登录成功，执行浏览
@@ -169,8 +140,23 @@ async def main():
     # 发送通知
     logger.info("-" * 40)
     if results:
-        title = "LinuxDO 浏览签到结果"
-        content = "\n".join(results)
+        # 如果有 Cookie 过期的账号，发送特殊提醒
+        if cookie_expired_accounts:
+            title = "⚠️ LinuxDO Cookie 过期，请手动更新"
+            expired_list = "\n".join(f"  - {name}" for name in cookie_expired_accounts)
+            content = (
+                "以下账号的 Cookie 已过期（LinuxDO 已启用人机验证，无法自动登录）：\n"
+                f"{expired_list}\n\n"
+                "请手动操作：\n"
+                "1. 在浏览器中逐个登录 linux.do（通过人机验证）\n"
+                "2. 使用 Chrome 扩展「LinuxDO Cookie 提取」一键提取\n"
+                "3. 更新 GitHub Secret: LINUXDO_ACCOUNTS\n\n"
+                "--- 本次运行结果 ---\n" + "\n".join(results)
+            )
+        else:
+            title = "LinuxDO 浏览签到结果"
+            content = "\n".join(results)
+
         logger.info(f"发送通知:\n{content}")
 
         try:

@@ -12,7 +12,7 @@
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from loguru import logger
 
@@ -94,17 +94,49 @@ class FailureTracker:
         return count
 
     def record_success(self, provider: str, account_name: str) -> None:
-        """记录一次成功，清零连续失败计数"""
+        """记录一次成功，清零连续失败计数和周期重试标记"""
         key = self._make_key(provider, account_name)
         entry = self._data.get(key, {})
         entry["consecutive_failures"] = 0
         entry["last_failure_reason"] = ""
         entry["last_success_at"] = datetime.now(timezone.utc).isoformat()
+        entry.pop("last_retry_at", None)
         self._data[key] = entry
 
-    def should_skip(self, provider: str, account_name: str, threshold: int = 3) -> bool:
-        """判断是否应跳过该 provider+account（连续失败 >= threshold）"""
-        return self.get_failure_count(provider, account_name) >= threshold
+    def record_retry(self, provider: str, account_name: str) -> None:
+        """记录一次周期重试时间戳（不清零失败计数）"""
+        key = self._make_key(provider, account_name)
+        entry = self._data.get(key, {})
+        entry["last_retry_at"] = datetime.now(timezone.utc).isoformat()
+        self._data[key] = entry
+
+    def should_skip(self, provider: str, account_name: str, threshold: int = 3, retry_interval_hours: int = 0) -> bool:
+        """判断是否应跳过该 provider+account（连续失败 >= threshold）
+
+        Args:
+            threshold: 连续失败次数阈值
+            retry_interval_hours: 周期重试间隔（小时）。>0 时，距上次失败/重试超过该时长则强制不跳过。
+                                  默认 0 表示不启用周期重试（保持原行为）。
+        """
+        if self.get_failure_count(provider, account_name) < threshold:
+            return False
+        # 未启用周期重试，直接跳过
+        if retry_interval_hours <= 0:
+            return True
+        # 检查是否到了周期重试时间
+        key = self._make_key(provider, account_name)
+        entry = self._data.get(key, {})
+        # 优先看 last_retry_at，没有则看 last_failure_at
+        last_ts = entry.get("last_retry_at") or entry.get("last_failure_at")
+        if not last_ts:
+            return True
+        try:
+            last_time = datetime.fromisoformat(last_ts)
+            if datetime.now(timezone.utc) - last_time >= timedelta(hours=retry_interval_hours):
+                return False  # 到期，不跳过，允许重试
+        except (ValueError, TypeError):
+            pass
+        return True
 
     def get_failure_count(self, provider: str, account_name: str) -> int:
         """获取连续失败次数"""
@@ -123,6 +155,7 @@ class FailureTracker:
                 "consecutive_failures": entry.get("consecutive_failures", 0),
                 "last_failure_reason": entry.get("last_failure_reason", ""),
                 "last_failure_at": entry.get("last_failure_at", ""),
+                "last_retry_at": entry.get("last_retry_at", ""),
             }
             for key, entry in self._data.items()
             if entry.get("consecutive_failures", 0) >= threshold

@@ -4,6 +4,7 @@
     "password": "your_linuxdo_password",
     "name": "主账号",
     "browse_minutes": 30,
+    "cookies": "_t=你的_t值; _forum_session=你的_forum_session值",
     "checkin_sites": ["anyrouter", "kfcapi", "duckcoding", "runanytime", "hotaru"]
   },
   {
@@ -11,6 +12,7 @@
     "password": "second_password",
     "name": "小号",
     "browse_minutes": 60,
+    "cookies": "_t=xxx; _forum_session=yyy",
     "exclude_sites": ["anyrouter", "agentrouter", "wong"]
   }
 ]

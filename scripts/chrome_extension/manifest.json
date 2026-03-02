@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "NEWAPI 人工补录助手",
-  "version": "4.1.0",
-  "description": "GitHub Action 后一键打开失败站点，人工登录后生成 NEWAPI_ACCOUNTS",
+  "name": "签到助手（NEWAPI + LinuxDO）",
+  "version": "5.0.0",
+  "description": "NEWAPI 失败站点补录 + LinuxDO Cookie 一键提取",
   "permissions": [
     "cookies",
     "storage",
