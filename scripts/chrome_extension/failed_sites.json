@@ -1,6 +1,22 @@
 {
-  "generated_at": "2026-03-04T00:06:58.846836+00:00",
+  "generated_at": "2026-03-04T15:17:51.949641+00:00",
   "source": "github_actions",
-  "failed_count": 0,
-  "failed_sites": []
+  "failed_count": 1,
+  "failed_sites": [
+    {
+      "provider": "anyrouter",
+      "account_name": "github_59286",
+      "api_user": "59286",
+      "platform": "NewAPI (anyrouter)",
+      "site_url": "https://anyrouter.top",
+      "login_url": "https://anyrouter.top/login",
+      "oauth_login_url": "https://anyrouter.top/auth/login?returnTo=%2F",
+      "reason": "HTTP 401",
+      "failure_kind": "",
+      "runtime_cookie_keys": [],
+      "last_url": "",
+      "needs_manual_auth": true,
+      "oauth_cookie_blocked": false
+    }
+  ]
 }
