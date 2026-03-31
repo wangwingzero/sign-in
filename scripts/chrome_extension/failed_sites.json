@@ -1,38 +1,8 @@
 {
-  "generated_at": "2026-03-31T02:11:39.499366+00:00",
+  "generated_at": "2026-03-31T17:39:59.776529+00:00",
   "source": "github_actions",
-  "failed_count": 6,
+  "failed_count": 4,
   "failed_sites": [
-    {
-      "provider": "wong",
-      "account_name": "wwingzero_wong",
-      "api_user": "",
-      "platform": "NewAPI (wong)",
-      "site_url": "https://wzw.pp.ua",
-      "login_url": "https://wzw.pp.ua/login",
-      "oauth_login_url": "https://wzw.pp.ua/auth/login?returnTo=%2F",
-      "reason": "Cookie 无效且未提供 LinuxDO 账号密码",
-      "failure_kind": "",
-      "runtime_cookie_keys": [],
-      "last_url": "",
-      "needs_manual_auth": true,
-      "oauth_cookie_blocked": false
-    },
-    {
-      "provider": "wong",
-      "account_name": "tigerwang_wong",
-      "api_user": "",
-      "platform": "NewAPI (wong)",
-      "site_url": "https://wzw.pp.ua",
-      "login_url": "https://wzw.pp.ua/login",
-      "oauth_login_url": "https://wzw.pp.ua/auth/login?returnTo=%2F",
-      "reason": "Cookie 无效且未提供 LinuxDO 账号密码",
-      "failure_kind": "",
-      "runtime_cookie_keys": [],
-      "last_url": "",
-      "needs_manual_auth": true,
-      "oauth_cookie_blocked": false
-    },
     {
       "provider": "anyrouter",
       "account_name": "llllongda_anyrouter",
